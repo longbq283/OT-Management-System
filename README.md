@@ -66,7 +66,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184, 4185 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
@@ -90,3 +90,7 @@ Giữ cả `assets/`, `src/`, `vendor/`; không chọn riêng `assets`. Đườn
 - Dữ liệu thuộc trình duyệt và origin. Đổi máy/origin hoặc xóa dữ liệu duyệt web có thể mất dữ liệu; sao lưu JSON định kỳ. Chưa có đồng bộ, tài khoản hoặc phân quyền backend.
 - Backup tối đa 20 MB và 100.000 dòng/bảng; checksum phát hiện file hỏng, không xác thực người tạo. Nhật ký cục bộ không phải audit server chống sửa đổi.
 - Chưa đối chiếu file nhân sự thật hoặc giao diện Microsoft Excel desktop; XLSX được ghi/đọc lại bằng SheetJS.
+
+## Khi không thấy dữ liệu vừa nhập
+
+Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3. Sau khi lưu, ứng dụng xóa bộ lọc cũ và mở đúng kỳ vừa nhập. Khi tải lại trang, tự chọn kỳ của lần import có hiệu lực gần nhất. Màn hình Tra cứu/Lịch sử cho biết số file/bản ghi thực có trong IndexedDB, có nút **Xem dữ liệu mới nhất** và chọn lại kỳ đã lưu. Bộ lọc vẫn có thể cho kết quả rỗng khi chọn kỳ/dự án không có dữ liệu; không cần xóa dữ liệu trình duyệt.
