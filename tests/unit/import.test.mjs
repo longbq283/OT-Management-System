@@ -57,8 +57,8 @@ test('Manual profiles recognize unfamiliar labels and do not reuse stale row bou
 const rec=(code='SYNTH001',minutes=240,date='2026-10-01')=>({employeeId:code,name:'Giả lập',unit:'DEMO',source:'daily',ntMinutes:minutes,nnMinutes:0,totalMinutes:minutes,days:[{date,type:'NT',minutes}],errors:[]});
 const candidate=(changes={})=>({id:'old',projectId:'BIDC',year:2026,month:10,mode:'initial',contentHash:'hash1',records:[rec()],...changes});
 const snapshot=(batch)=>({imports:[batch],periods:[{key:periodKey(batch),activeIds:[batch.id],revision:1}]});
-test('Supplement disallows employees in any active file; identical content not duplicated',()=>{
-  const old=candidate(),s=snapshot(old);assert.match(assessImport(candidate({mode:'supplement',contentHash:'new'}),s).errors.join(' '),/trùng cán bộ/);assert.match(assessImport(candidate(),s).errors.join(' '),/đã có hiệu lực/);assert.equal(assessImport(candidate({mode:'supplement',contentHash:'new',records:[rec('SYNTH002')]}),s).errors.length,0);
+test('Supplement disallows employees in any active file; identical content not duplicated; new supplements unsupported',()=>{
+  const old=candidate(),s=snapshot(old);assert.match(assessImport(candidate({mode:'supplement',contentHash:'new'}),s).errors.join(' '),/trùng cán bộ/);assert.match(assessImport(candidate(),s).errors.join(' '),/đã có hiệu lực/);assert.match(assessImport(candidate({mode:'supplement',contentHash:'new',records:[rec('SYNTH002')]}),s).errors.join(' '),/không cộng chồng/);
 });
 test('Cross-project same day only warns; other day allowed; replaced versions excluded',()=>{
   const old=candidate(),s=snapshot(old);assert.equal(assessImport(candidate({projectId:'LVB'}),s).errors.length,0);assert.match(assessImport(candidate({projectId:'LVB'}),s).warnings.join(' '),/đã khai OT/);

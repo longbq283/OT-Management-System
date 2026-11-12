@@ -1,98 +1,92 @@
-# OT Workspace — OT Management System
+# OT Management System — quản lý dữ liệu OT lâu dài
 
-Ứng dụng web tiếng Việt quản lý OT cá nhân bằng HTML, CSS và JavaScript thuần. Import Excel bằng SheetJS, lưu cục bộ trong IndexedDB; triển khai được trên GitHub Pages mà không cần build, backend hoặc API Key.
-
-## Cấu trúc MVP
-
-```text
-index.html                      # Trang tĩnh, điểm vào GitHub Pages
-assets/
-  css/style.css                 # Màu sắc, component, bảng và biểu đồ
-  css/layout.css                # Sidebar, bố cục và responsive
-  js/app.js                     # Khởi động, điều hướng và các màn hình
-  js/database.js                # API công khai cho IndexedDB, CRUD, backup/restore
-  js/excel-importer.js           # API công khai đọc Excel, mapping và preview
-  js/ot-calculator.js            # API công khai tính OT, hạn mức và trùng ngày
-  js/dashboard.js               # Render chỉ số, biểu đồ và bảng trạng thái cán bộ
-src/
-  db/                           # Schema, migration, transaction, audit và JSON
-  domain/                       # Logic tính OT dùng chung
-  import/                       # Nhận diện, chuẩn hóa, mapping, dữ liệu giả lập
-  workers/                      # Bộ đọc SheetJS ngoài luồng giao diện
-  reports/                      # Xuất Excel .xlsx
-  data.js                       # Sinh demo trong bộ nhớ; không chứa dữ liệu thật
-vendor/sheetjs/                  # Thư viện đóng gói cục bộ và giấy phép
-tests/                         # Unit/Chromium, fixture chỉ có dữ liệu giả lập
-docs/                          # Quy tắc, thiết kế và kết quả kiểm thử
-.nojekyll
-.gitignore
-README.md
-```
-
-Các file `database.js`, `excel-importer.js`, `ot-calculator.js` là đầu mối API ổn định, sử dụng các module chuyên trách trong `src/`. Không nhân bản phép tính hay thay IndexedDB bằng localStorage. Cần giữ cả `assets/`, `src/` và `vendor/` khi triển khai.
+Website tiếng Việt bằng HTML, CSS, JavaScript thuần, SheetJS cục bộ và IndexedDB. Quản lý danh mục dự án, nhân sự, dữ liệu tháng/năm và lịch sử phiên bản. Không cần backend, API Key hoặc build; không dùng localStorage làm cơ sở dữ liệu.
 
 ## Chạy
 
 ```sh
 npm start
-# Hoặc không cần Node/npm để chạy website:
+# Hoặc chỉ cần Python 3:
 python3 -m http.server 4173 --bind 0.0.0.0
 ```
 
-Dùng trình duyệt mở website được phục vụ tại cổng 4173. Không mở trực tiếp `index.html` qua `file://` vì ứng dụng dùng ES Modules và Worker. Web Crypto cần HTTPS hoặc localhost.
+Dùng trình duyệt mở website được phục vụ ở cổng 4173. Không mở bằng `file://`: ứng dụng dùng ES Modules, Worker và Web Crypto (cần HTTPS hoặc localhost).
 
-## Tính năng
+## Quy trình sử dụng thật
 
-9 màn hình: tổng quan, upload chấm công, quản lý dự án, nhân sự, tra cứu OT, cảnh báo, lịch sử import, báo cáo và sao lưu. Báo cáo xuất Excel `.xlsx` gồm 3 sheet: tổng hợp OT, chi tiết dự án và ngày OT; vẫn giữ tùy chọn CSV.
+1. Website mặc định mở **Dữ liệu đã nhập**, đọc IndexedDB và giữ nguyên khi tải lại. Kho mới rỗng, không tự seed demo.
+2. Tạo dự án với mã, tên, mô tả và trạng thái ở **Dự án** hoặc ngay trong **Upload OT**. Mã/tên trùng bị từ chối. Dự án có lịch sử chỉ đổi sang ngừng hoạt động; vẫn xem được báo cáo cũ.
+3. Mỗi upload phải chọn rõ **dự án đang hoạt động + năm + tháng**, sau đó mới chọn Excel. Tháng/năm từ file chỉ là gợi ý, không ghi đè lựa chọn.
+4. Kiểm tra sheet, dòng tiêu đề, mapping và đơn vị giờ; ánh xạ tay nếu cần. Mapping lưu riêng theo dự án.
+5. Xem preview, đọc lỗi/cảnh báo và xác nhận kỳ trước khi ghi. Kỳ trùng chỉ cho **thay thế toàn bộ hoặc hủy**, không cộng chồng. Dữ liệu cũ và snapshot trước/sau được giữ.
+6. Dashboard lọc năm, một tháng/cả năm và dự án/tất cả dự án. Có 6 chỉ số, biểu đồ tháng/dự án và danh sách cảnh báo.
+7. **Báo cáo tháng**: NT, NN, OT từng dự án, tổng toàn dự án, hạn mức còn lại và trạng thái.
+8. **Báo cáo năm**: ma trận 12 tháng, tổng từng cán bộ/dự án, biến động OT, hạn mức năm và số lượt vượt 40h của từng tháng. Excel năm có 6 sheet; CSV cũng theo bộ lọc.
+9. Tra cứu cán bộ và mở chi tiết để xem dữ liệu nguồn qua nhiều năm, kể cả phiên bản đã thay thế. Tên/đơn vị lúc import không bị sửa ngược khi chỉnh hồ sơ hiện tại.
+10. Sao lưu/khôi phục JSON toàn bộ và kiểm tra tính toàn vẹn ở **Sao lưu**. Khôi phục tải bản sao hiện tại trước khi thay toàn bộ kho trong một transaction.
 
-**Import Excel thật** hỗ trợ `.xlsx/.xls`, nhận diện header/cột ngày/tên cột tương đương, ánh xạ thủ công, xác nhận kỳ, NT/NN/L, đối chiếu tổng và lưu mapping theo dự án. Có xem trước, kiểm tra bổ sung trùng cán bộ; trùng ngày liên dự án chỉ cảnh báo, không tự xóa; vượt 40h/tháng hoặc 200h/năm chỉ cảnh báo. Phiên bản thay thế không bị cộng trùng.
+## Quy tắc tính OT
 
-Xem [hướng dẫn và thiết kế module Excel](docs/excel-import.md), [quy tắc nghiệp vụ](docs/business-rules.md) và [schema IndexedDB / 6 chỉ tiêu OT](docs/indexeddb.md).
+- NT = ngày thường; NN = ngày nghỉ và L. Có dữ liệu ngày thì tính từ ngày, cột tổng Excel chỉ đối chiếu; không cộng NT + NN + tổng lần nữa.
+- Mã cán bộ giữ dạng chuỗi, bảo toàn số 0 đầu. Một mã có thể tham gia nhiều dự án. Cùng mã khác tên/cùng tên khác mã được cảnh báo, không tự gộp.
+- Tính bằng phút nguyên: 40h/tháng/người và 200h/năm/người. Vượt chỉ cảnh báo, không chặn upload.
+- **Lọc một dự án chỉ lọc số giờ hiển thị và nhóm cán bộ; hạn mức vẫn cộng toàn bộ dự án.** Khi xem năm, kiểm tra 40h riêng cho từng tháng. Các năm không cộng vào nhau để so hạn mức năm.
+- Trùng ngày giữa dự án chỉ cảnh báo, không xóa hay tự loại khỏi tổng. Dữ liệu tổng hợp không đủ để kiểm tra ngày được ghi rõ.
+- Lỗi định dạng, thiếu mã/tên hoặc giờ âm phải sửa trước khi lưu. Giờ hiển thị tối đa 2 số thập phân, số liệu gốc dùng phút nguyên.
 
-## Dữ liệu demo và dữ liệu đã nhập
+## Cấu trúc
 
-- Mặc định mở **Dữ liệu demo**. Nhân sự mẫu có mã `DEMOxxx`, chỉ nằm trong bộ nhớ và đặt lại khi tải trang.
-- Menu **Upload chấm công** mở bộ import thật. Chỉ sau khi kiểm tra và xác nhận mới ghi dữ liệu cán bộ vào IndexedDB.
-- Nút **Thử file BIDC giả lập** tạo file trong bộ nhớ, chỉ cho xem trước; không được ghi mẫu này vào kho chính.
-- Lưu import xong sẽ mở **Dữ liệu đã nhập**. Có thể chuyển giữa hai không gian bằng bộ chọn ở thanh trên. Sau khi tải lại trang, chọn **Dữ liệu đã nhập** để đọc dữ liệu đã lưu.
-- Dữ liệu đã nhập được dùng cho dashboard, nhân sự, tra cứu, cảnh báo, lịch sử và xuất CSV. Lịch sử giữ các phiên bản cũ nhưng tổng chỉ tính phiên bản có hiệu lực.
-- Mapping lưu riêng theo dự án; có thể lưu mẫu trước khi lưu cán bộ.
-- Sao lưu JSON kho chính gồm toàn bộ 6 bảng nghiệp vụ, kỳ, mapping và metadata. Có kiểm tra/xem trước và khôi phục nguyên tử; tải bản sao hiện tại trước khi khôi phục. Hỗ trợ backup v1/v2. Tạo/sửa dự án và sửa hồ sơ cán bộ trong chế độ dữ liệu đã nhập được lưu bền và ghi audit; demo vẫn chỉ ở bộ nhớ.
-- Không có dữ liệu nhân sự thật trong repository. Không tự seed bất kỳ dữ liệu demo nào vào IndexedDB.
+```text
+index.html
+assets/css/style.css, layout.css
+assets/js/app.js                 # Khởi động, điều hướng và nghiệp vụ giao diện
+assets/js/database.js            # API công khai của IndexedDB
+assets/js/excel-importer.js      # API đọc/nhận diện/preview Excel
+assets/js/ot-calculator.js       # API tính hạn mức
+assets/js/dashboard.js           # Dashboard và báo cáo nhiều năm
+src/db/                          # Schema 3, migration, transaction, JSON/audit
+src/domain/                      # Tính OT, chuẩn hóa tên, báo cáo chung
+src/views/                       # Giao diện dashboard/tháng/năm
+src/import/, src/workers/         # Mapping và đọc SheetJS trong Worker
+src/reports/                     # Xuất XLSX
+src/data.js                      # Bộ sinh demo tạm, không seed vào kho chính
+vendor/sheetjs/                  # Thư viện và giấy phép; không gọi CDN lúc sử dụng
+tests/                           # Fixture giả lập, unit và Chromium
+docs/                            # Thiết kế, kế hoạch và kết quả kiểm thử
+.nojekyll, .gitignore
+```
 
-File nhân sự được xử lý tại trình duyệt, không gửi lên máy chủ. Không analytics hoặc font/CDN bên ngoài. SheetJS được lưu tại `vendor/sheetjs`; nguồn phân phối và checksum có trong [README thư viện](vendor/sheetjs/README.md).
+Schema 3 gồm **Projects, Employees, Imports, OTRecords, OTDetails, ImportHistory** và AuditLogs, periods, mappingProfiles, Metadata. Nâng cấp từ v1/v2 giữ dữ liệu, không reset. Backup v3 chứa đủ 10 bảng; hỗ trợ nhận backup v1/v2/v3. Xem [thiết kế và các giai đoạn](docs/long-term-plan.md).
 
 ## Kiểm thử
 
-Cần Node.js 20+, Python 3 và Chromium:
-
 ```sh
 npm ci
-npx playwright install chromium # Nếu máy chưa có /usr/bin/chromium
+npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Có thể đặt `BROWSER_EXECUTABLE` tới Chrome/Chromium có sẵn. HTTP server kiểm thử dùng cổng 4175/4176/4177/4178/4179 và tự đóng. Dữ liệu Excel được tạo từ fixture JavaScript giả lập trong bộ nhớ; ảnh kiểm tra nằm trong thư mục tạm.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
-- `npm run test:comprehensive`: 3 dự án × 10 cán bộ × 12 tháng; đọc 36 workbook trong Worker, đối chiếu 720 chỉ tiêu với oracle độc lập, thay thế, restore JSON và ghi/đọc lại Excel. Sinh [bảng kết quả thực tế](docs/qa-results.md).
-- `npm run test:unit`: nhận diện mẫu, thời gian, mapping, OT và quy tắc import.
-- `npm run test:browser`: 9 màn hình tại 1440/768/390/360px, giao diện demo, luồng Excel/IndexedDB thật, migration v1→v2, 6 chỉ tiêu, history/audit, backup/restore, rollback khi lỗi ghi và chạy tại đường dẫn con như GitHub Pages trong browser context tạm.
+- `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
+- `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
+- `npm run test:comprehensive`: 36 file / 3 dự án / 10 cán bộ / 12 tháng; oracle độc lập, 720 chỉ tiêu. [Kết quả](docs/qa-results.md).
+- `npm run test:long-term`: 72 file / 24 tháng năm 2025–2026, 336 dòng tháng và 788 ngày; master, xác nhận kỳ, ma trận năm, hạn mức khi lọc, snapshot, inactive, lịch sử cán bộ và restore. [Kết quả](docs/qa-long-term.md).
 
-## Triển khai GitHub Pages
+## GitHub Pages
 
-1. Push/merge mã nguồn vào nhánh `main` của `longbq283/OT-Management-System`.
-2. Mở repository → **Settings → Pages**.
-3. Tại **Build and deployment**, chọn **Deploy from a branch**.
-4. Chọn nhánh **main**, thư mục **/ (root)**, rồi **Save**.
-5. Chờ GitHub hoàn tất tác vụ Pages và mở địa chỉ website mà trang Settings hiển thị.
+1. Push/merge mã vào `main` của `longbq283/OT-Management-System`.
+2. **Settings → Pages → Build and deployment → Deploy from a branch**.
+3. Chọn **main**, **/ (root)** → **Save**.
+4. Chờ GitHub hoàn thành Pages và mở địa chỉ được Settings cung cấp.
 
-Không cần build, backend, API Key hoặc cấu hình biến bí mật. Không chọn riêng thư mục `assets`: website cần toàn bộ cấu trúc trên. Đường dẫn tương đối, hash routing, Worker và thư viện vendor hỗ trợ đường dẫn `/OT-Management-System/`; `.nojekyll` đã có sẵn. Khi triển khai phiên bản mới, tải lại trang để nạp JavaScript mới. Chưa tự động bật hoặc phát hành GitHub Pages trong thay đổi này.
+Giữ cả `assets/`, `src/`, `vendor/`; không chọn riêng `assets`. Đường dẫn tương đối, hash routing, Worker và `.nojekyll` hỗ trợ `/OT-Management-System/`. Việc bật/phát hành Pages là cấu hình riêng, chưa tự thực hiện.
 
-## Phạm vi MVP và phần chưa có
+## Dữ liệu và vận hành
 
-- Dashboard: số cán bộ/dự án, tổng OT tháng, cảnh báo tháng/năm, biểu đồ và bảng trạng thái cán bộ; 8 menu chính và lịch sử import.
-- Nhập Excel, quản lý dữ liệu IndexedDB, tính 6 chỉ tiêu, lịch sử thay thế, cảnh báo, báo cáo Excel/CSV và sao lưu/khôi phục JSON đã có.
-- Không có tài khoản, phân quyền, backend hoặc đồng bộ nhiều thiết bị; dữ liệu thuộc origin và trình duyệt hiện tại.
-- Mẫu BIDC và các mẫu khác được kiểm thử bằng workbook giả lập; chưa đối chiếu file nhân sự thực tế hay Microsoft Excel desktop.
-
-Không commit file chấm công, CSV hoặc backup nhân sự. `.gitignore` loại các file này cùng `local-data/`; vẫn cần kiểm tra nội dung trước khi commit. Mã nguồn chỉ có bộ sinh dữ liệu giả lập cho demo/kiểm thử, không chứa danh sách cán bộ thật hoặc file Excel. IndexedDB không thay thế backup: xóa dữ liệu duyệt web, đổi máy hoặc đổi origin có thể làm mất quyền truy cập dữ liệu cục bộ.
+- Không có Excel/dữ liệu nhân sự thật trong repository. Fixture và demo đều được tạo từ tên/mã giả lập. Demo chỉ ở bộ nhớ; upload trong chế độ demo không ghi kho thật.
+- File được đọc tại trình duyệt, không gửi lên máy chủ/GitHub. Không analytics hoặc font bên ngoài. Nguồn SheetJS/checksum: [vendor README](vendor/sheetjs/README.md).
+- `.gitignore` chặn Excel, CSV, backup, `.env`, `local-data/` và output kiểm thử. Kiểm tra nội dung trước khi commit.
+- Dữ liệu thuộc trình duyệt và origin. Đổi máy/origin hoặc xóa dữ liệu duyệt web có thể mất dữ liệu; sao lưu JSON định kỳ. Chưa có đồng bộ, tài khoản hoặc phân quyền backend.
+- Backup tối đa 20 MB và 100.000 dòng/bảng; checksum phát hiện file hỏng, không xác thực người tạo. Nhật ký cục bộ không phải audit server chống sửa đổi.
+- Chưa đối chiếu file nhân sự thật hoặc giao diện Microsoft Excel desktop; XLSX được ghi/đọc lại bằng SheetJS.

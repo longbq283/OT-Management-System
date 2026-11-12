@@ -1,6 +1,6 @@
 # Kết quả kiểm thử toàn diện OT Management System
 
-Thời điểm chạy: 2026-11-12 18:14:53 (Asia/Bangkok).
+Thời điểm chạy: 2026-11-12 18:45:57 (Asia/Bangkok).
 
 Kết quả: **27 PASS / 0 FAIL**. Chromium headless, browser context tạm; không sử dụng hoặc sửa dữ liệu trình duyệt người dùng.
 
@@ -27,11 +27,11 @@ Fixture: 3 dự án BIDC/LVB/Dự án C; 10 mã giả lập `000001`–`000010`;
 | TC17 — Chống cộng trùng khi đổi tên/thứ tự và bổ sung | File thay thế hiện tại đảo thứ tự dòng; mode initial/supplement | Từ chối cả hai; Imports/OTRecords/tổng giờ không đổi | 2/2 thao tác bị từ chối; không ghi thêm và không tăng tổng | **PASS** |
 | TC18 — Thay lại file giống hệt không cộng trùng | Chọn replace rõ ràng với cùng nội dung đang hiệu lực | Tạo lịch sử mới, tổng vẫn 1.922h, chỉ 36 import active | 36 active; 2 phiên bản archived; tổng 1.922h không tăng | **PASS** |
 | TC19 — Hai thao tác đồng thời từ cùng preview | 2 replace cùng revision cho BIDC tháng 10 | Chỉ một commit; thao tác còn lại báo dữ liệu đã thay đổi | 1 commit, 1 từ chối revision cũ; tổng không đổi | **PASS** |
-| TC20 — Hủy và rollback khi lỗi quota | Hủy lượt nhập; mô phỏng lỗi add OTRecords trong replace | Không đổi OT khi hủy; toàn bộ 9 bảng rollback khi lỗi ghi | Hủy không thay OT; lỗi quota hoàn tác 9/9 bảng và revision | **PASS** |
+| TC20 — Hủy và rollback khi lỗi quota | Hủy lượt nhập; mô phỏng lỗi add OTRecords trong replace | Không đổi OT khi hủy; toàn bộ 10 bảng rollback khi lỗi ghi | Hủy không thay OT; lỗi quota hoàn tác 9/10 bảng và revision | **PASS** |
 | TC21 — Tổng hợp sau thay thế loại phiên bản cũ | 10 cán bộ × 12 tháng sau 3 phiên bản replace | 720 giá trị vẫn khớp oracle; 168 active, 15 archived | 720/720 giá trị đúng; 168 active, 15 archived, 36 kỳ active | **PASS** |
 | TC22 — Xuất Excel sau thay thế | Báo cáo năm, chỉ dữ liệu hiệu lực | 168 dòng, tổng 1.922h; không xuất 15 dòng archived | 168 dòng hiệu lực, tổng 1.922h; phiên bản cũ không được xuất | **PASS** |
-| TC23 — Sao lưu toàn bộ và khôi phục ở trình duyệt mới | Backup schema 2 gồm 9 bảng, lịch sử và mapping | Bảng nghiệp vụ giữ nguyên; thêm 1 audit restore, 720 chỉ tiêu đúng | 7 bảng dữ liệu/mapping giữ nguyên; audit +1, revision tăng; 720/720 giá trị khớp | **PASS** |
-| TC24 — Backup hỏng không phá dữ liệu | JSON bị sửa tổng OT nhưng giữ checksum cũ | Từ chối restore; toàn bộ 9 bảng không đổi | Báo lỗi checksum; 9/9 bảng giữ nguyên | **PASS** |
+| TC23 — Sao lưu toàn bộ và khôi phục ở trình duyệt mới | Backup schema 3 gồm 10 bảng, lịch sử và mapping | Bảng nghiệp vụ giữ nguyên; thêm 1 audit restore, 720 chỉ tiêu đúng | 8 bảng dữ liệu/mapping giữ nguyên; audit +1, revision tăng; 720/720 giá trị khớp | **PASS** |
+| TC24 — Backup hỏng không phá dữ liệu | JSON bị sửa tổng OT nhưng giữ checksum cũ | Từ chối restore; toàn bộ 10 bảng không đổi | Báo lỗi checksum; 9/10 bảng giữ nguyên | **PASS** |
 | TC25 — Lưu bền sau reload và cách ly demo | Reload website, chọn Dữ liệu đã nhập | 10 cán bộ giả lập của fixture; không thêm DEMO; tổng vẫn 1.922h | 10 mã fixture, 0 mã DEMO; 1.922h sau reload | **PASS** |
 | TC26 — Giao diện và lỗi trình duyệt | Báo cáo, tra cứu, cảnh báo; 390px và 1440px | Không lỗi JavaScript/CSP và không tràn ngang toàn trang | 10/10 tổ hợp màn hình/kích thước đạt; 0 lỗi trình duyệt | **PASS** |
 | TC27 — Xuất Excel giữ đúng bộ lọc tại thời điểm bấm | Làm chậm tải thư viện 200ms; bấm xuất tháng 10 rồi đổi sang tháng 9 | File vẫn là tháng 10, tổng 133,25h sau thay thế | File tháng 10 đúng 133,25h dù giao diện đã chuyển tháng 9 | **PASS** |

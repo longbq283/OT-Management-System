@@ -12,3 +12,6 @@ export async function queryOTRecords({employeeId,projectId,year,month,includeArc
   });
 }
 export async function getEmployeeOTSummary(employeeId,year,month){const records=await queryOTRecords({employeeId,year});return {...employeeMetrics(records,employeeId,year,month),dayWarnings:dayConflicts(records).filter(c=>c.date.startsWith(`${year}-${String(month).padStart(2,'0')}`))};}
+
+export async function getOTReport({year,month=0,projectId='all'}){const {buildOTReport}=await import('../domain/reports.mjs');const t=await readTables(['OTRecords','Employees','Projects']);return buildOTReport({records:t.OTRecords,employees:t.Employees,projects:t.Projects,year,month,projectId});}
+export async function getEmployeeOTHistory(employeeId,{includeArchived=true}={}){return (await queryOTRecords({employeeId,includeArchived})).sort((a,b)=>b.year-a.year||b.month-a.month||a.projectId.localeCompare(b.projectId));}

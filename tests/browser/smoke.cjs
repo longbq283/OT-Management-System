@@ -28,6 +28,7 @@ async function run() {
     const goto = async route => {
       await page.goto(`${base}/#/${route}`);
       await page.locator('h1').waitFor();
+      if(await page.locator('#workspace-mode').inputValue()!=='demo')await page.locator('#workspace-mode').selectOption('demo');
     };
     const routes = ['dashboard', 'upload', 'projects', 'employees', 'lookup', 'alerts', 'history', 'reports', 'backup'];
     for (const width of [1440, 768, 390, 360]) {
@@ -50,7 +51,7 @@ async function run() {
     assert.equal(await page.locator('#employee-results tbody tr').count(), 1);
     await page.locator('[data-action="employee-detail"]').click();
     await page.locator('dialog[open]').waitFor();
-    assert.equal(await page.locator('dialog tbody tr').count(), 2, 'Cán bộ mẫu phải có OT trên nhiều dự án.');
+    assert.equal(await page.locator('dialog .table-wrap').first().locator('tbody tr').count(), 2, 'Cán bộ mẫu phải có OT trên nhiều dự án.');
     await page.getByRole('button', { name: 'Đóng', exact: true }).click();
     console.log('PASS: lọc kỳ, tìm kiếm và chi tiết cán bộ nhiều dự án.');
     await goto('projects');
@@ -60,7 +61,7 @@ async function run() {
     await page.getByRole('button', { name: 'Lưu dự án mẫu' }).click();
     assert.equal(await page.locator('.project-card').count(), 5);
     await goto('upload');
-    await page.locator('[data-import="demo"]').click();
+    if(await page.locator('[data-import="demo"]').count())await page.locator('[data-import="demo"]').click();
     await page.locator('[data-action="use-demo"]').click();
     await page.locator('input[value="supplement"]').check();
     await page.locator('[data-action="upload-next"]').click();
@@ -90,7 +91,7 @@ async function run() {
     await page.locator('#backup-file').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"demo":false}') });
     await page.waitForFunction(() => document.querySelector('#backup-result').textContent.includes('Không thể kiểm tra'));
     const storage = await page.evaluate(async () => ({ local: localStorage.length, databases: await indexedDB.databases() }));
-    assert.deepEqual(storage, { local: 0, databases: [] });
+    assert.equal(storage.local,0);const unseeded=await page.evaluate(async()=>{const {readImportState}=await import('/src/db/import-store.mjs');return readImportState();});assert.equal(unseeded.imports.length,0);assert.equal(unseeded.employees.length,0);
     await page.reload();
     await goto('projects');
     assert.equal(await page.locator('.project-card').count(), 4, 'Dữ liệu demo không được lưu bền.');
@@ -102,7 +103,7 @@ async function run() {
     await page.locator('.sidebar.open').waitFor();
     await page.locator('.nav-link[href="#/upload"]').click();
     await page.waitForURL('**/#/upload');
-    await page.locator('#real-excel-file').waitFor();
+    await page.getByRole('heading',{name:'Upload chấm công',exact:true}).waitFor();
     assert.equal(await page.locator('.sidebar.open').count(), 0);
     assert.deepEqual(errors, [], 'Có lỗi JavaScript, tài nguyên hoặc CSP.');
     console.log('PASS: menu điện thoại, không có lỗi trình duyệt.');

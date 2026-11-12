@@ -2,13 +2,13 @@
 
 ## Sử dụng
 
-1. Mở **Upload chấm công**, chọn dự án và nhập mới/bổ sung/thay thế toàn bộ kỳ.
+1. Mở **Upload chấm công**, chọn hoặc tạo dự án, chọn năm và tháng chính thức rồi chọn nhập mới/thay thế toàn bộ kỳ.
 2. Chọn file `.xlsx` hoặc `.xls`. File được đọc bằng SheetJS CE 0.20.3 trong Web Worker, không upload lên máy chủ.
 3. Chọn sheet, kiểm tra dòng tiêu đề, phạm vi dữ liệu, đơn vị và ánh xạ cột. Có thể đổi mọi cột, sửa/thêm/bỏ cột ngày và phân loại NT/NN/L.
-4. Xác nhận tháng và năm. Năm thiếu sẽ để trống; tháng/năm mâu thuẫn giữa các nguồn cũng phải chọn lại. Không mặc định năm hiện tại.
+4. Xác nhận tháng và năm. Bắt buộc đã chọn năm/tháng trước khi đọc file; nhận diện chỉ gợi ý và không ghi đè. Nếu nguồn mâu thuẫn, hiển thị cảnh báo, dùng kỳ người dùng xác nhận.
 5. Xem trước: giờ tính lại, tổng Excel, chênh lệch, lỗi theo dòng và ngày OT chi tiết. Dòng tổng không được coi là cán bộ.
 6. Sửa lỗi trước khi lưu. Cảnh báo không chặn lưu nhưng phải xác nhận đã đọc. Xác nhận kỳ; nếu thay thế phải xác nhận thay toàn bộ kỳ.
-7. Lưu thành công sẽ chuyển sang lịch sử trong **Dữ liệu đã nhập**. Dashboard/nhân sự/tra cứu/báo cáo lấy phiên bản đang có hiệu lực. Sau khi tải lại trang, chọn **Dữ liệu đã nhập** ở thanh trên để đọc lại IndexedDB.
+7. Lưu thành công sẽ chuyển sang lịch sử trong **Dữ liệu đã nhập**. Dashboard/nhân sự/tra cứu/báo cáo lấy phiên bản đang có hiệu lực. Sau khi tải lại trang, kho dữ liệu thật được mở tự động.
 
 ## Mẫu BIDC đầu tiên
 
@@ -52,9 +52,9 @@ Có thể bấm **Lưu mẫu mapping** trước khi lưu cán bộ; hoặc lưu 
 
 ## IndexedDB và chống cộng trùng
 
-Schema hiện tại là **2** với Employees, Projects, OTRecords, Imports, ImportHistory và AuditLogs. Các bảng nội bộ giữ activeIds của kỳ, mapping và revision. Xem [thiết kế cơ sở dữ liệu](indexeddb.md).
+Schema hiện tại là **3** với Employees, Projects, OTRecords, OTDetails, Imports, ImportHistory và AuditLogs. Các bảng nội bộ giữ activeIds của kỳ, mapping và revision. Xem [thiết kế cơ sở dữ liệu](indexeddb.md).
 
-Nhập mới vào kỳ đã có dữ liệu cho phép chuyển sang thay thế hoặc hủy. Thay thế archive phiên bản cũ và lưu snapshot trước/sau trong một transaction. Bổ sung chỉ nhận cán bộ chưa có trong các file có hiệu lực của kỳ.
+Nhập mới vào kỳ đã có dữ liệu cho phép chuyển sang thay thế hoặc hủy. Thay thế archive phiên bản cũ và lưu snapshot trước/sau trong một transaction. Không nhận bổ sung cộng chồng; dữ liệu bổ sung cũ vẫn được bảo toàn khi nâng cấp và archive khi thay thế kỳ.
 
 **Quy tắc trùng ngày đã thay đổi:** cùng mã cán bộ, cùng ngày, khác dự án chỉ cảnh báo và yêu cầu xác nhận; không chặn nhập, không tự xóa và không loại giờ khỏi tổng. Vượt 40h/tháng, 200h/năm cũng chỉ cảnh báo. Dữ liệu thiếu ngày được đánh dấu chưa kiểm tra đầy đủ.
 

@@ -1,5 +1,7 @@
 # Các vấn đề phát hiện và sửa khi kiểm thử toàn diện
 
+Lịch sử đợt v0.4. Với bản quản lý lâu dài v0.5, xem [kết quả hai năm](qa-long-term.md) và [kế hoạch đã hoàn thành](long-term-plan.md).
+
 Toàn bộ dữ liệu dưới đây là giả lập. Bảng kết quả cuối được sinh tự động ở [qa-results.md](qa-results.md) từ lượt chạy mới nhất.
 
 | ID | Phát hiện trước khi sửa | Bằng chứng | Sửa và kiểm tra lại |

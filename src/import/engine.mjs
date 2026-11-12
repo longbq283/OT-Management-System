@@ -145,7 +145,7 @@ export function previewSheet(sheet,mapping,{year,month}){
     if(!code)issue('Thiếu mã cán bộ.');
     if(!name)issue('Thiếu họ tên.');
     if(code&&seen.has(code))issue(`Mã cán bộ trùng dòng ${seen.get(code)}.`);else if(code)seen.set(code,r+1);
-    if(columns.unit===undefined)issue('Chưa ánh xạ đơn vị.',false);
+    if(columns.unit===undefined)issue('Chưa ánh xạ đơn vị.',false);else if(!record.unit)issue('Thiếu đơn vị tại thời điểm import.',false);
     if(row[columns.code]?.t==='n'&&!/^0\d/.test(code))issue('Mã cán bộ dạng số; kiểm tra số 0 đầu có bị mất trong Excel.',false);
     for(const field of ['nt','nn','total'])if(columns[field]!==undefined){
       const parsed=parseMinutes(row[columns[field]],mapping.unit);
