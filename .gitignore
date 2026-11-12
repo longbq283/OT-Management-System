@@ -1,0 +1,13 @@
+node_modules/
+test-results/
+playwright-report/
+.DS_Store
+.env
+.env.*
+# Không commit file chấm công, dữ liệu nhân sự hoặc bản sao lưu.
+*.xlsx
+*.xls
+*.csv
+*backup*.json
+local-data/
+OT_before_restore_*.json

@@ -1,0 +1,16 @@
+{
+  "name": "ot-management-system",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Quản lý OT với Import Excel, mapping linh hoạt và IndexedDB",
+  "scripts": {
+    "start": "python3 -m http.server 4173 --bind 0.0.0.0",
+    "test": "npm run test:unit && npm run test:browser && npm run test:comprehensive",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:browser": "node tests/browser/smoke.cjs && node tests/browser/import.cjs && node tests/browser/database.cjs && node tests/browser/pages.cjs",
+    "test:comprehensive": "node tests/browser/comprehensive.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
