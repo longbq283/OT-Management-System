@@ -4,7 +4,7 @@ export const normalize = value => String(value ?? '').normalize('NFD').replace(/
 const synonyms = {
   name:['ho ten','ho va ten','ten can bo','ten nhan vien','full name','employee name'],
   code:['ma can bo','ma cb','ma nhan vien','ma nv','employee id','employee code','staff id'],
-  unit:['don vi','phong ban','bo phan','department','unit'],
+  unit:['don vi','don vi ban tt','don vi ban trung tam','don vi phong ban','phong ban','bo phan','department','unit'],
   nt:['gio nt','nt','ot nt','gio ngay thuong','gio ot ngay thuong','ot ngay thuong','so gio ngay thuong','tong gio nt','gio lam them ngay thuong','tong gio ngay thuong'],
   nn:['gio nn','nn','ot nn','gio ngay nghi','gio ot ngay nghi','ot ngay nghi','so gio ngay nghi','tong gio nn','gio lam them ngay nghi','tong gio ngay nghi'],
   total:['tong gio','tong so gio','tong ot','tong gio ot','tong cong gio','tong so gio lam them','tong','total hours','total ot'],
@@ -23,7 +23,30 @@ function dayNumber(cell){
   if(!m)m=normalize(text).match(/^(?:ngay|day)\s*(\d{1,2})$/);
   const n=m?Number(m[1]):(typeof cell.v==='number'&&Number.isInteger(cell.v)?cell.v:null);return n>=1&&n<=31?n:null;
 }
-function fieldMatches(text,field,profile){return [...synonyms[field],...(profile?.labels?.[field]?[normalize(profile.labels[field])]:[])].includes(normalize(text));}
+function fieldMatches(text,field,profile){
+  let label=normalize(text);
+  // Monthly templates append the reporting period to the total's label.
+  // Match that specific suffix rather than guessing from arbitrary partial words.
+  if(field==='total')label=label.replace(/\s+(?:thang|month)\s+(?:0?[1-9]|1[0-2])(?:\s+(?:nam\s+)?20\d{2})?$/,'');
+  return synonyms[field].includes(label)||(profile?.labels?.[field]&&normalize(profile.labels[field])===normalize(text));
+}
+function dataEndRow(sheet,mapping){
+  const {columns,startRow}=mapping;
+  if(columns.name===undefined||columns.code===undefined)return sheet.rows.length-1;
+  // A total followed solely by notes/signatures ends the employee table.
+  // Keep later identity rows (including incomplete ones) so validation never
+  // silently drops staff listed after a departmental subtotal.
+  let lastIdentity=-1;
+  for(let r=startRow;r<sheet.rows.length;r++){
+    const row=sheet.rows[r]||[],name=cellText(row[columns.name]),code=cellText(row[columns.code]);
+    if(code||name&&!summaryLabel(name))lastIdentity=r;
+  }
+  for(let r=Math.max(startRow,lastIdentity+1);r<sheet.rows.length;r++){
+    const row=sheet.rows[r]||[];
+    if(!cellText(row[columns.code])&&summaryLabel(cellText(row[columns.name])))return r;
+  }
+  return sheet.rows.length-1;
+}
 export function headerLabels(sheet,row){return Array.from({length:sheet.columns},(_,c)=>cellText(at(sheet,row,c)));}
 export function signature(sheet,row){return JSON.stringify(headerLabels(sheet,row).map(normalize));}
 export function detectTemplate(sheet,profiles=[]){
@@ -65,6 +88,10 @@ export function detectTemplate(sheet,profiles=[]){
   const mapping={headerRow:best.row,typeRow:hasTypeRow?typeRow:null,startRow:firstData,endRow:sheet.rows.length-1,columns:best.columns,days,unit:'hours',source:'auto'};
   if(matching){
     mapping.columns={...matching.mapping.columns};mapping.unit=matching.mapping.unit;mapping.source=matching.mapping.source;
+    // Older saved profiles may predate recognition of decorated optional labels.
+    // Fill missing fields without overriding a user's mapped columns.
+    const used=new Set(Object.values(mapping.columns));
+    for(const [field,column] of Object.entries(best.columns))if(mapping.columns[field]===undefined&&!used.has(column)){mapping.columns[field]=column;used.add(column);}
     mapping.startRow=best.row+matching.mapping.startRow-matching.mapping.headerRow;
     mapping.days=matching.mapping.days.map(saved=>({column:saved.column,day:saved.day,type:matching.mapping.typeRow!==null?resolveType(saved.column):''}));
     // Month-specific manual day types must be reconfirmed if no classification row exists.
@@ -74,6 +101,7 @@ export function detectTemplate(sheet,profiles=[]){
     const values=sheet.rows.slice(mapping.startRow,mapping.startRow+20).flatMap(row=>[...days.map(d=>row[d.column]),...['nt','nn','total'].map(f=>row[mapping.columns[f]])]).filter(Boolean);
     if(values.some(c=>typeof c.v==='number'&&/(?:\[h\]|h{1,2}:mm)/i.test(c.z||'')))mapping.unit='duration';
   }
+  mapping.endRow=dataEndRow(sheet,mapping);
   return {mapping,score:best.score,ambiguous:best.ambiguous||[],profileId:matching?.id||null,signature:signature(sheet,best.row),kind:days.length?'daily':'summary'};
 }
 export function detectPeriod(sheet,headerRow,filename=''){
@@ -138,7 +166,7 @@ export function previewSheet(sheet,mapping,{year,month}){
   for(let r=mapping.startRow;r<=mapping.endRow;r++){
     const row=sheet.rows[r]||[];if(!row.some(c=>cellText(c)))continue;
     const name=cellText(row[columns.name]),code=cellText(row[columns.code]).normalize('NFC').trim().toUpperCase();
-    if(summaryLabel(name)||(!code&&row.slice(0,3).some(c=>summaryLabel(cellText(c))))){skipped.push({row:r+1,reason:'Dòng tổng'});continue;}
+    if(!code&&(summaryLabel(name)||row.slice(0,3).some(c=>summaryLabel(cellText(c))))){skipped.push({row:r+1,reason:'Dòng tổng'});continue;}
     if(!code&&!name&&row.every(c=>!cellText(c)))continue;
     const record={employeeId:code,name,unit:cellText(row[columns.unit]),sourceRow:r+1,ntMinutes:0,nnMinutes:0,lMinutes:0,totalMinutes:0,unclassifiedMinutes:0,days:[],errors:[],warnings:[],reported:{},source:daily?'daily':'summary'};
     const issue=(message,error=true)=>(error?record.errors:record.warnings).push(message);

@@ -19,4 +19,21 @@ function model(book,name='Sheet1'){
   return {name,merges:ws['!merges']||[],columns:range.e.c+1,rows:Array.from({length:range.e.r+1},(_,r)=>Array.from({length:range.e.c+1},(_,c)=>{const cell=ws[XLSX.utils.encode_cell({r,c})];if(!cell)return null;return {v:cell.v,t:cell.t,w:cell.w,f:cell.f};}))};
 }
 function binary(book,type='xlsx'){return Buffer.from(XLSX.write(book,{type:'buffer',bookType:type}));}
-module.exports={XLSX,bidc,bookFrom,model,binary};
+// Reproduces only the monthly form's structure; every identity/hour is invented.
+function monthlyTemplate({month=10,people=39}={}){
+  const book=bidc({month,people}),ws=book.Sheets.Sheet1;
+  ws.A6={t:'s',v:'Họ tên'};ws.C6={t:'s',v:'Đơn vị (Ban/TT)'};
+  ws.AK6={t:'s',v:`Tổng số giờ Tháng ${month}`};
+  ws.A7={t:'s',v:'Loại ngày (NT/NN)'};
+  for(let i=0;i<people;i++){
+    const r=i+8;ws[`B${r}`]={t:'n',v:i+1,z:'000000'};
+    ws[`AI${r}`]={t:'n',v:1,f:`SUMIF($D$7:$AH$7,"NT",D${r}:AH${r})`};
+    ws[`AJ${r}`]={t:'n',v:3,f:`SUMIF($D$7:$AH$7,"NN",D${r}:AH${r})+SUMIF($D$7:$AH$7,"L",D${r}:AH${r})`};
+    ws[`AK${r}`]={t:'n',v:4,f:`SUM(D${r}:AH${r})`};
+  }
+  ws.C51={t:'s',v:'Người kiểm tra (giả lập)'};ws.T51={t:'s',v:'Người phê duyệt (giả lập)'};
+  ws.C58={t:'s',v:'Chữ ký giả lập'};ws.D62={t:'s',v:'Xác nhận giả lập'};
+  ws['!merges']=[{s:{r:6,c:0},e:{r:6,c:2}}];ws['!ref']='A1:AK68';
+  return book;
+}
+module.exports={XLSX,bidc,bookFrom,model,binary,monthlyTemplate};

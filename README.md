@@ -17,7 +17,7 @@ Dùng trình duyệt mở website được phục vụ ở cổng 4173. Không m
 1. Website mặc định mở **Dữ liệu đã nhập**, đọc IndexedDB và giữ nguyên khi tải lại. Kho mới rỗng, không tự seed demo.
 2. Tạo dự án với mã, tên, mô tả và trạng thái ở **Dự án** hoặc ngay trong **Upload OT**. Mã/tên trùng bị từ chối. Dự án có lịch sử chỉ đổi sang ngừng hoạt động; vẫn xem được báo cáo cũ.
 3. Mỗi upload phải chọn rõ **dự án đang hoạt động + năm + tháng**, sau đó mới chọn Excel. Tháng/năm từ file chỉ là gợi ý, không ghi đè lựa chọn.
-4. Kiểm tra sheet, dòng tiêu đề, mapping và đơn vị giờ; ánh xạ tay nếu cần. Mapping lưu riêng theo dự án.
+4. Với mẫu chấm công hằng tháng, web tự nhận diện mã cán bộ, họ tên, đơn vị, ngày và tổng giờ; bỏ phần ghi chú/chữ ký sau dòng tổng. Kiểm tra các cột đã nhận diện rồi bấm **Kiểm tra & xem trước**. Chỉ mở **Điều chỉnh cột / mẫu Excel khác** khi cần; cấu hình lưu riêng theo dự án.
 5. Xem preview, đọc lỗi/cảnh báo và xác nhận kỳ trước khi ghi. Kỳ trùng chỉ cho **thay thế toàn bộ hoặc hủy**, không cộng chồng. Dữ liệu cũ và snapshot trước/sau được giữ.
 6. Dashboard lọc năm, một tháng/cả năm và dự án/tất cả dự án. Có 6 chỉ số, biểu đồ tháng/dự án và danh sách cảnh báo.
 7. **Báo cáo tháng**: NT, NN, OT từng dự án, tổng toàn dự án, hạn mức còn lại và trạng thái.
@@ -66,7 +66,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184, 4185 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4186 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
@@ -89,8 +89,16 @@ Giữ cả `assets/`, `src/`, `vendor/`; không chọn riêng `assets`. Đườn
 - `.gitignore` chặn Excel, CSV, backup, `.env`, `local-data/` và output kiểm thử. Kiểm tra nội dung trước khi commit.
 - Dữ liệu thuộc trình duyệt và origin. Đổi máy/origin hoặc xóa dữ liệu duyệt web có thể mất dữ liệu; sao lưu JSON định kỳ. Chưa có đồng bộ, tài khoản hoặc phân quyền backend.
 - Backup tối đa 20 MB và 100.000 dòng/bảng; checksum phát hiện file hỏng, không xác thực người tạo. Nhật ký cục bộ không phải audit server chống sửa đổi.
-- Chưa đối chiếu file nhân sự thật hoặc giao diện Microsoft Excel desktop; XLSX được ghi/đọc lại bằng SheetJS.
+- Mẫu chấm công do người dùng cung cấp đã được kiểm tra cục bộ bằng Worker ở bước xem trước; không lưu nhân sự vào kho chính và không đưa file vào Git. Bộ kiểm thử trong repository chỉ dùng dữ liệu giả lập. Chưa kiểm tra giao diện Microsoft Excel desktop; XLSX xuất ra được đọc lại bằng SheetJS.
 
 ## Khi không thấy dữ liệu vừa nhập
 
 Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3. Sau khi lưu, ứng dụng xóa bộ lọc cũ và mở đúng kỳ vừa nhập. Khi tải lại trang, tự chọn kỳ của lần import có hiệu lực gần nhất. Màn hình Tra cứu/Lịch sử cho biết số file/bản ghi thực có trong IndexedDB, có nút **Xem dữ liệu mới nhất** và chọn lại kỳ đã lưu. Bộ lọc vẫn có thể cho kết quả rỗng khi chọn kỳ/dự án không có dữ liệu; không cần xóa dữ liệu trình duyệt.
+
+## Mẫu chấm công hằng tháng
+
+- Hỗ trợ nhãn **Đơn vị (Ban/TT)** và **Tổng số giờ Tháng N**, cả khi đổi tháng. Tự tìm tiêu đề, cột ngày và dòng tổng, không cố định số dòng cán bộ cho mọi file.
+- Phần chữ ký sau dòng tổng không phải cán bộ. Nếu có cán bộ tiếp sau dòng tổng bộ phận, vẫn đọc và kiểm tra; thiếu mã/tên không bị bỏ qua âm thầm. Có thể chỉnh phạm vi đọc trong phần tùy chọn.
+- Mã cán bộ là khóa khớp qua các tháng; mã có số 0 đầu giữ theo định dạng hiển thị Excel. Mã số không có định dạng số 0 đầu sẽ có cảnh báo để kiểm tra nguồn. Cùng mã khác tên hoặc cùng tên khác mã đều cảnh báo, không tự gộp.
+- Hằng tháng chỉ cần chọn dự án, năm, tháng, file → kiểm tra nhận diện → xem trước → xác nhận lưu. Luôn giữ bước xác nhận kỳ và cảnh báo. Tra cứu tự chuyển đúng kỳ vừa lưu.
+- Kiểm thử riêng: `node tests/browser/monthly-template.cjs` (fixture giả lập, 2 tháng, 39 mã, có công thức đã tính và chữ ký).

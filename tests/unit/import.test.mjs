@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {detectTemplate,detectPeriod,previewSheet,parseMinutes,createProfile,validateMapping} from '../../src/import/engine.mjs';
 import {assessImport,periodKey,fingerprint} from '../../src/db/import-store.mjs';
-const {bidc,bookFrom,model}=createRequire(import.meta.url)('../fixtures/workbooks.cjs');
+const {bidc,bookFrom,model,monthlyTemplate,binary,XLSX}=createRequire(import.meta.url)('../fixtures/workbooks.cjs');
 const preview=(sheet,options={year:2026,month:10})=>previewSheet(sheet,detectTemplate(sheet).mapping,options);
 
 test('BIDC: A1/A3, header 6, types 7, employees 8–46; excludes total 47',()=>{
@@ -16,6 +16,28 @@ test('BIDC: A1/A3, header 6, types 7, employees 8–46; excludes total 47',()=>{
 test('Finds shifted header and moved equivalent columns',()=>{
   const sheet=model(bidc({shift:4,reorder:true})),d=detectTemplate(sheet),p=preview(sheet);
   assert.equal(d.mapping.headerRow,9);assert.equal(d.mapping.columns.code,2);assert.equal(d.mapping.columns.total,34);assert.equal(p.records[0].totalMinutes,240);assert.equal(p.canSave,true);
+});
+test('Monthly form recognizes decorated headers, cached totals and excludes signature footer',()=>{
+  for(const month of [1,10,11,12]){
+    const sh=model(XLSX.read(binary(monthlyTemplate({month})),{type:'buffer',cellNF:true}));
+    const d=detectTemplate(sh),p=previewSheet(sh,d.mapping,{year:2026,month});
+    assert.deepEqual(d.mapping.columns,{name:0,code:1,unit:2,nt:34,nn:35,total:36});
+    assert.equal(d.mapping.endRow,46);assert.equal(p.records.length,39);assert.equal(p.canSave,true);
+    assert.deepEqual(p.skipped,[{row:47,reason:'Dòng tổng'}]);
+    assert.equal(p.records[0].employeeId,'000001');assert.equal(p.records[0].reported.total,240);
+    assert.equal(p.records[0].totalMinutes,240);assert.equal(p.records[0].nnMinutes,180);
+    assert.equal(p.records[0].unit,'Đơn vị giả lập');
+    const profile=createProfile(sh,d.mapping,'BIDC');profile.mapping.endRow=10;
+    delete profile.mapping.columns.unit;delete profile.mapping.columns.total;
+    assert.equal(detectTemplate(sh,[profile]).mapping.endRow,46);
+    assert.equal(detectTemplate(sh,[profile]).mapping.columns.unit,2);assert.equal(detectTemplate(sh,[profile]).mapping.columns.total,36);
+  }
+});
+test('Subtotals and incomplete employee rows never hide later staff',()=>{
+  const sh=model(bookFrom([['Họ tên','Mã cán bộ','Tổng số giờ Tháng 10'],['Giả lập A','000001',4],['Tổng cộng','',4],['Giả lập B','000002',3],['Giả lập thiếu mã','',2],['Tổng cộng','',9],[],['','','Người ký giả lập']]));
+  const p=preview(sh);assert.equal(detectTemplate(sh).mapping.endRow,5);assert.equal(p.records.length,3);
+  assert.equal(p.records[1].employeeId,'000002');assert.match(p.records[2].errors.join(' '),/Thiếu mã/);assert.equal(p.canSave,false);
+  sh.rows[3][0]={v:'Tổng Giả lập B',t:'s'};assert.equal(preview(sh).records.length,3);
 });
 test('Recognizes period and requires missing year',()=>{
   const sh=model(bidc()),d=detectTemplate(sh),period=detectPeriod(sh,d.mapping.headerRow,'sample.xlsx');assert.equal(period.month,10);assert.equal(period.year,null);
