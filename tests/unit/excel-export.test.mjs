@@ -16,3 +16,15 @@ test('Annual project export includes a 12-month matrix and uses global limits',(
  const source=[{...record,totalMinutes:1500,ntMinutes:1500,nnMinutes:0,days:[]},{...record,projectId:'LVB',totalMinutes:1080,ntMinutes:1080,nnMinutes:0,days:[]}];
  const b=reopen(create({records:source,projectId:'BIDC',report:'yearly'}));assert.equal(b.SheetNames.length,6);const s=b.Sheets['Tổng hợp OT'];assert.equal(s.G6.v,25);assert.equal(s.H6.v,43);assert.equal(s.L6.v,3);const matrix=XLSX.utils.sheet_to_json(b.Sheets['Tổng hợp 12 tháng'],{header:1});assert.equal(matrix[1][12],25);assert.equal(matrix[1][15],25);assert.equal(matrix[1][16],43);assert.equal(matrix[1][19],1);
 });
+
+test('Monthly and annual Excel exports apply search to every sheet and retain global limits',()=>{
+ const employees=[{...employee,name:'Nguyễn Giả Lập'},{employeeId:'000002',name:'Nhân sự khác',unit:'Đơn vị khác'}];
+ const records=[{...record,ntMinutes:1500,nnMinutes:0,totalMinutes:1500,days:[]},{...record,projectId:'LVB',ntMinutes:1080,nnMinutes:0,totalMinutes:1080,days:[]},{...record,employeeId:'000002'}];
+ for(const report of ['monthly','yearly']){
+  const b=reopen(create({employees,records,report,projectId:'BIDC',query:'nguyen gia lap'}));
+  assert.equal(b.Sheets['Tổng hợp OT'].A6.v,'000001');assert.equal(b.Sheets['Tổng hợp OT'].A7,undefined);assert.equal(b.Sheets['Tổng hợp OT'].G6.v,25);assert.equal(b.Sheets['Tổng hợp OT'].H6.v,43);
+  assert.equal(XLSX.utils.sheet_to_json(b.Sheets['Chi tiết dự án'],{header:1}).length,2);
+  assert.equal(XLSX.utils.sheet_to_json(b.Sheets['Ngày OT'],{header:1}).length,1);
+  if(report==='yearly'){assert.equal(XLSX.utils.sheet_to_json(b.Sheets['Tổng hợp 12 tháng'],{header:1}).length,2);assert.equal(b.Sheets['Tổng hợp dự án'].C2.v,25);assert.equal(b.Sheets['Hạn mức từng tháng'].C11.v,1);}
+ }
+});

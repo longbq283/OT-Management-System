@@ -1,18 +1,19 @@
-import {buildOTReport} from '../domain/reports.mjs';
+import {buildOTReport} from '../domain/reports.mjs?v=0.6.0';
 import {employeeMetrics,isActive} from '../domain/overtime.mjs';
 export async function loadSheetJS(){
   if(globalThis.XLSX)return globalThis.XLSX;
   if(!loadSheetJS.pending)loadSheetJS.pending=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=new URL('../../vendor/sheetjs/xlsx.full.min.js',import.meta.url);script.onload=()=>resolve(globalThis.XLSX);script.onerror=()=>{loadSheetJS.pending=null;script.remove();reject(Error('Không tải được thư viện xuất Excel.'));};document.head.append(script);});
   return loadSheetJS.pending;
 }
-export function createOTWorkbook({employees,records,projects,year,month,report='monthly',projectId='all',demo=false},XLSX){
+export function createOTWorkbook({employees,records,projects,year,month,report='monthly',projectId='all',query='',demo=false},XLSX){
   if(!Number.isInteger(year)||year<2000||year>2100||!Number.isInteger(month)||month<1||month>12)throw Error('Kỳ xuất Excel không hợp lệ.');
   if(!['monthly','yearly','alerts'].includes(report))throw Error('Loại báo cáo không hợp lệ.');
   const active=records.filter(isActive).map(r=>({...r,ntMinutes:r.ntMinutes??Math.round((r.nt||0)*60),nnMinutes:r.nnMinutes??Math.round((r.nn||0)*60),totalMinutes:r.totalMinutes??Math.round(((r.nt||0)+(r.nn||0))*60),unclassifiedMinutes:r.unclassifiedMinutes||0}));
   const people=employees.map(e=>({...e,code:e.employeeId??e.id})).sort((a,b)=>a.code.localeCompare(b.code));
   const metrics=new Map(people.map(e=>[e.code,employeeMetrics(active,e.code,year,month)]));
+  const matched=new Set(buildOTReport({records:active,employees:people.map(e=>({...e,employeeId:e.code})),projects,year,month:report==='yearly'?0:month,projectId,query}).rows.map(r=>r.employeeId));
   const scope=active.filter(r=>r.year===year&&(report==='yearly'||r.month===month)&&(projectId==='all'||r.projectId===projectId)),participants=new Set(scope.map(r=>r.employeeId));
-  const chosen=people.filter(e=>participants.has(e.code)&&(report!=='alerts'||metrics.get(e.code).excessMonthMinutes>0)),codes=new Set(chosen.map(e=>e.code));
+  const chosen=people.filter(e=>participants.has(e.code)&&matched.has(e.code)&&(report!=='alerts'||metrics.get(e.code).excessMonthMinutes>0)),codes=new Set(chosen.map(e=>e.code));
   const selected=scope.filter(r=>codes.has(r.employeeId));
   const title=`BÁO CÁO OT${demo?' — DỮ LIỆU GIẢ LẬP':''}`;
   const rows=[[title],[`Kỳ: ${report==='yearly'?`Năm ${year}`:`Tháng ${month}/${year}`} · Dự án: ${projectId}`],['Đơn vị: giờ; tính từ phút nguyên. NN bao gồm L. Chỉ lấy phiên bản có hiệu lực.'],[],['Mã cán bộ','Họ tên','Đơn vị','Giờ NT','Giờ NN','Chưa phân loại','Tổng giờ',`Tổng OT tháng ${month} (mọi dự án)`,'Tổng OT năm (mọi dự án)','Còn lại tháng','Còn lại năm','Vượt tháng','Vượt năm']];
@@ -32,7 +33,7 @@ export function createOTWorkbook({employees,records,projects,year,month,report='
     XLSX.utils.book_append_sheet(book,sheet,name);
   }
   if(report==='yearly'){
-    const annual=buildOTReport({records:active,employees:people.map(e=>({...e,employeeId:e.code})),projects,year,month:0,projectId});
+    const annual=buildOTReport({records:active,employees:people.map(e=>({...e,employeeId:e.code})),projects,year,month:0,projectId,query});
     const matrix=[['Mã cán bộ','Họ tên','Đơn vị',...Array.from({length:12},(_,i)=>`Tháng ${i+1}`),'OT năm theo bộ lọc','Tổng năm mọi dự án','Còn lại năm','Vượt năm','Lượt vượt tháng'],...annual.rows.map(r=>[r.employeeId,r.name,r.unit,...r.months.map(m=>m.selectedMinutes/60),r.totalMinutes/60,r.yearMinutes/60,r.remainingYearMinutes/60,r.excessYearMinutes/60,r.monthlyBreaches.length])];
     const grouped=[['Mã dự án','Tên dự án','OT năm theo bộ lọc (giờ)'],...annual.byProject.map(p=>[p.projectId,p.name,p.totalMinutes/60])];
     const limits=[['Tháng','OT theo dự án lọc (giờ)','Số lượt vượt 40h toàn dự án'],...annual.byMonth.map(m=>[m.month,m.totalMinutes/60,m.exceedanceCount])];

@@ -94,6 +94,38 @@ export async function saveImport(candidate,profile){
 export async function cancelImport(candidate){
   const db=await openDatabase();return new Promise((resolve,reject)=>{const tx=db.transaction(['ImportHistory','AuditLogs','Metadata'],'readwrite');const event={id:crypto.randomUUID(),action:'CANCEL_IMPORT',importId:null,projectId:candidate.projectId,year:candidate.year,month:candidate.month,periodKey:periodKey(candidate),filename:candidate.filename,at:new Date().toISOString(),before:null,after:null};tx.objectStore('ImportHistory').add(event);tx.objectStore('AuditLogs').add(auditEvent('CANCEL_IMPORT',candidate.projectId,{historyId:event.id,filename:candidate.filename}));nextRevision(tx);tx.oncomplete=()=>resolve();tx.onabort=()=>reject(tx.error);});
 }
+export async function deleteImport(importId,{expectedRevision}={}){
+  if(typeof importId!=='string'||!importId||!Number.isSafeInteger(expectedRevision))throw Error('Thiếu file hoặc phiên bản dữ liệu cần xóa. Hãy tải lại lịch sử.');
+  const db=await openDatabase();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(STORES,'readwrite');
+    const names=['Imports','OTRecords','periods','Employees','Metadata'];
+    const requests=Object.fromEntries(names.map(name=>[name,tx.objectStore(name).getAll()]));let done=0,problem;
+    const write=()=>{if(++done<names.length)return;try{
+      const revision=requests.Metadata.result.find(m=>m.key==='revision')?.value||0;
+      if(revision!==expectedRevision)throw Error('Dữ liệu đã thay đổi ở tab khác. Hãy tải lại lịch sử trước khi xóa.');
+      const batch=requests.Imports.result.find(i=>i.id===importId),period=batch&&requests.periods.result.find(p=>p.key===periodKey(batch));
+      if(!batch||batch.status!=='active'||!period?.activeIds.includes(importId))throw Error('Chỉ xóa file đang có hiệu lực; file này đã được xóa hoặc thay thế.');
+      const at=new Date().toISOString(),rows=requests.OTRecords.result;
+      const imports=requests.Imports.result.map(i=>({...i,records:rows.filter(r=>r.importId===i.id)}));
+      const afterIds=period.activeIds.filter(id=>id!==importId);
+      tx.objectStore('Imports').put({...batch,status:'archived',deletedAt:at});
+      for(const r of rows.filter(r=>r.importId===importId)){
+        const archived={...r,status:'archived'};tx.objectStore('OTRecords').put(archived);
+        for(const d of detailsForRecord(archived))tx.objectStore('OTDetails').put(d);
+      }
+      tx.objectStore('periods').put({...period,activeIds:afterIds,revision:period.revision+1});
+      const memberships=new Map();for(const r of rows.filter(r=>r.status==='active'&&r.importId!==importId)){
+        const ids=memberships.get(r.employeeId)||new Set();ids.add(r.projectId);memberships.set(r.employeeId,ids);
+      }
+      for(const e of requests.Employees.result)tx.objectStore('Employees').put({...e,projectIds:[...(memberships.get(e.employeeId)||[])].sort(),updatedAt:at});
+      const event={id:crypto.randomUUID(),action:'DELETE_IMPORT',importId,projectId:batch.projectId,year:batch.year,month:batch.month,filename:batch.filename,periodKey:period.key,at,before:periodSnapshot(imports,period.activeIds),after:periodSnapshot(imports,afterIds)};
+      tx.objectStore('ImportHistory').add(event);tx.objectStore('AuditLogs').add(auditEvent('DELETE_IMPORT',importId,{historyId:event.id,projectId:batch.projectId,year:batch.year,month:batch.month}));nextRevision(tx);
+    }catch(e){problem=e;tx.abort();}};
+    for(const r of Object.values(requests))r.onsuccess=write;
+    tx.oncomplete=()=>resolve();tx.onabort=()=>reject(problem||tx.error||Error('Không xóa được file; toàn bộ thay đổi đã hoàn tác.'));
+  });
+}
 export async function saveProject(project,{create=false}={}){
   if(typeof project.id!=='string'||!/^[A-Z0-9_]+(?:-[A-Z0-9_]+)*$/.test(project.id)||typeof project.name!=='string'||!project.name.trim()||!['active','inactive'].includes(project.status)||!['green','blue','purple','orange'].includes(project.color))throw Error('Mã, tên hoặc trạng thái dự án không hợp lệ.');
   const db=await openDatabase();return new Promise((resolve,reject)=>{

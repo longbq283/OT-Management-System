@@ -16,7 +16,7 @@ Dùng trình duyệt mở website được phục vụ ở cổng 4173. Không m
 
 1. Website mặc định mở **Dữ liệu đã nhập**, đọc IndexedDB và giữ nguyên khi tải lại. Kho mới rỗng, không tự seed demo.
 2. Tạo dự án với mã, tên, mô tả và trạng thái ở **Dự án** hoặc ngay trong **Upload OT**. Mã/tên trùng bị từ chối. Dự án có lịch sử chỉ đổi sang ngừng hoạt động; vẫn xem được báo cáo cũ.
-3. Mỗi upload phải chọn rõ **dự án đang hoạt động + năm + tháng**, sau đó mới chọn Excel. Tháng/năm từ file chỉ là gợi ý, không ghi đè lựa chọn.
+3. Mỗi upload phải chọn rõ **dự án đang hoạt động + năm từ 2026 + tháng**, sau đó mới chọn Excel. Tháng/năm từ file chỉ là gợi ý, không ghi đè lựa chọn.
 4. Với mẫu chấm công hằng tháng, web tự nhận diện mã cán bộ, họ tên, đơn vị, ngày và tổng giờ; bỏ phần ghi chú/chữ ký sau dòng tổng. Kiểm tra các cột đã nhận diện rồi bấm **Kiểm tra & xem trước**. Chỉ mở **Điều chỉnh cột / mẫu Excel khác** khi cần; cấu hình lưu riêng theo dự án.
 5. Xem preview, đọc lỗi/cảnh báo và xác nhận kỳ trước khi ghi. Kỳ trùng chỉ cho **thay thế toàn bộ hoặc hủy**, không cộng chồng. Dữ liệu cũ và snapshot trước/sau được giữ.
 6. Dashboard lọc năm, một tháng/cả năm và dự án/tất cả dự án. Có 6 chỉ số, biểu đồ tháng/dự án và danh sách cảnh báo.
@@ -66,7 +66,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4186 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
@@ -102,3 +102,14 @@ Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3.
 - Mã cán bộ là khóa khớp qua các tháng; mã có số 0 đầu giữ theo định dạng hiển thị Excel. Mã số không có định dạng số 0 đầu sẽ có cảnh báo để kiểm tra nguồn. Cùng mã khác tên hoặc cùng tên khác mã đều cảnh báo, không tự gộp.
 - Hằng tháng chỉ cần chọn dự án, năm, tháng, file → kiểm tra nhận diện → xem trước → xác nhận lưu. Luôn giữ bước xác nhận kỳ và cảnh báo. Tra cứu tự chuyển đúng kỳ vừa lưu.
 - Kiểm thử riêng: `node tests/browser/monthly-template.cjs` (fixture giả lập, 2 tháng, 39 mã, có công thức đã tính và chữ ký).
+
+## Sửa file sai, xóa dữ liệu import và tìm kiếm báo cáo
+
+- Mở **Lịch sử import → Xóa file** tại file đang có hiệu lực. Hộp thoại nêu rõ file, dự án, kỳ, số cán bộ và giờ bị loại; phải đánh dấu xác nhận mới xóa. Hủy không thay đổi dữ liệu.
+- Xóa loại OT của đúng file khỏi dashboard, tra cứu, cảnh báo và báo cáo. Bản ghi chuyển sang lưu lịch sử; giữ snapshot trước/sau, ngày OT, nhật ký xóa và hồ sơ cán bộ/dự án. Các kỳ/dự án khác không bị xóa, phiên bản cũ không tự được kích hoạt lại. Có thể upload lại kỳ đã xóa ở chế độ nhập mới, hoặc dùng chức năng thay thế kỳ khi file vẫn đang có hiệu lực.
+- Thao tác ghi trong một transaction, kiểm tra phiên bản dữ liệu giữa các tab; lỗi ghi sẽ hoàn tác. Backup/restore v3 giữ được trạng thái xóa và lịch sử, không cần xóa/nâng lại kho IndexedDB.
+- Năm upload chọn trong danh sách **2026–2100** ở cả bước chọn file và kiểm tra nhận diện. Dữ liệu cũ trước 2026 vẫn được giữ, xem báo cáo và khôi phục từ backup.
+- **Tổng quan, Báo cáo tháng, Báo cáo năm, Vượt giờ tháng và Cảnh báo** có ô tìm mã, tên hoặc đơn vị, hỗ trợ gõ tiếng Việt không dấu. Tìm kiếm cập nhật bảng, biểu đồ, số liệu tổng hợp và cảnh báo; hạn mức của cán bộ khớp vẫn tính trên toàn bộ dự án.
+- CSV và mọi sheet Excel xuất từ Báo cáo giữ đúng bộ lọc và tìm kiếm tại lúc bấm xuất. Nút **Xóa tìm kiếm** trả về toàn bộ cán bộ của kỳ/dự án đang chọn.
+
+Kiểm thử mới: `node tests/browser/delete-search.cjs`; chỉ sử dụng dữ liệu giả lập. Xem [bảng kết quả](docs/qa-delete-search.md).

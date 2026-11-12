@@ -8,7 +8,7 @@ try{
   await page.evaluate(async()=>{const {createProject}=await import('/src/db/import-store.mjs');await createProject({id:'BIDC',name:'BIDC',status:'active',color:'green'});});
   await page.reload();await page.locator('h1').waitFor();
   async function upload(month,changedName=false){
-    await page.goto(base+'/#/dashboard');await page.goto(base+'/#/upload');await page.locator('#real-project').selectOption('BIDC');await page.locator('#real-year').fill('2026');await page.locator('#real-month').selectOption(String(month));
+    await page.goto(base+'/#/dashboard');await page.goto(base+'/#/upload');await page.locator('#real-project').selectOption('BIDC');await page.locator('#real-year').selectOption('2026');await page.locator('#real-month').selectOption(String(month));
     const book=monthlyTemplate({month});if(changedName)book.Sheets.Sheet1.A8={t:'s',v:'Họ tên giả lập đã thay đổi'};
     await page.locator('#real-excel-file').setInputFiles({name:`SYNTH_month_${month}.xlsx`,mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:binary(book)});
     await page.locator('#recognized-mapping').waitFor();assert.match(await page.locator('#recognized-mapping').innerText(),/Mã cán bộ\s+Cột B/);assert.match(await page.locator('#recognized-mapping').innerText(),/Họ tên\s+Cột A/);assert.match(await page.locator('#recognized-mapping').innerText(),/Đơn vị\s+Cột C/);

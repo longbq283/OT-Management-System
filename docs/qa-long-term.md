@@ -7,7 +7,7 @@ Kết quả: 14 PASS / 0 FAIL.
 | Test case | Mong đợi | Thực tế | Trạng thái |
 |---|---|---|---|
 | Kho thật mặc định và danh mục riêng | 0 nhân sự ban đầu; tạo 3 dự án; trùng tên/mã bị từ chối | 3 dự án; không có nhân sự seed; hai kiểu trùng đều bị từ chối | PASS |
-| Upload chọn kỳ, nhận diện không ghi đè | Chọn 2025, file ghi 2026; lưu đúng 2025 sau xác nhận | 3 file qua UI; năm 2025 được giữ nguyên, mapping C lưu riêng | PASS |
+| Upload chọn kỳ, nhận diện không ghi đè | Chọn 2026, file ghi 2025; lưu đúng 2026 sau xác nhận | 3 file qua UI; năm 2026 được giữ nguyên, mapping C lưu riêng | PASS |
 | Lưu dữ liệu thật cho 24 tháng | 72 imports, 336 OTRecords, 788 OTDetails; 10 nhân sự, 3 dự án | 72 imports / 336 dòng tháng / 788 ngày; dữ liệu 2025 và 2026 tách biệt | PASS |
 | Báo cáo nhiều năm không cộng chéo | Mỗi năm tổng 1.937h; mã 000001 là 516h/năm | 2025: 1.937h; 2026: 1.937h; 2024: 0h; không cộng thành 3.874h trong một năm | PASS |
 | Bộ lọc dự án giữ hạn mức toàn dự án | 000001 BIDC 25h, toàn dự án 43h; 000005 C 96h/năm nhưng toàn dự án 240h | BIDC vẫn cảnh báo vượt tháng 3h; C vẫn cảnh báo vượt năm 40h | PASS |
