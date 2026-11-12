@@ -1,6 +1,6 @@
 {
   "name": "ot-management-system",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Quản lý dữ liệu OT nhiều năm bằng IndexedDB, Excel và báo cáo toàn dự án",
   "scripts": {

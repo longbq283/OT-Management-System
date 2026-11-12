@@ -1,2 +1,2 @@
 /** Dashboard and report views for the persistent, multi-year OT workspace. */
-export {renderLongDashboard,renderLongReports} from '../../src/views/long-term.js?v=0.6.0';
+export {renderLongDashboard,renderLongReports} from '../../src/views/long-term.js?v=0.6.1';
