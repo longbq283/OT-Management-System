@@ -19,3 +19,15 @@ test('Invalid or oversized shared data fail closed; API access failures may fall
  let apiStatus=403;const client=createGitHubClient(config,{fallbackURL:'https://example.invalid/data/shared-ot.json',fetcher:async url=>url.startsWith('https://api.github.com')?json({},apiStatus):json(empty)});
  await assert.rejects(client.read(),e=>e.code==='access');const result=await client.read({allowFallback:true});assert.equal(result.fallback,true);assert.equal(result.sha,null);assert.deepEqual(result.data,empty);apiStatus=404;assert.equal((await client.read({allowFallback:true})).fallback,true);
 });
+
+test('Provider failures distinguish credentials, rate limits, invalid payloads and protected branches without echoing secrets',async()=>{
+ const cases=[
+  [401,{message:'Bad credentials'}, {},'access',/hết hạn/],
+  [403,{message:'Forbidden'}, {},'access',/Contents: Read and write/],
+  [403,{message:'API rate limit exceeded'},{'x-ratelimit-remaining':'0','retry-after':'7'},'rate-limit',/7 giây/],
+  [429,{}, {'retry-after':'2'},'rate-limit',/2 giây/],
+  [422,{message:'Validation Failed',errors:[{field:'content'},{field:'SYNTH_SECRET'}]}, {},'rejected',/trường content/],
+  [403,{message:'Changes must be made through a pull request'}, {},'protected',/Nhánh GitHub/],
+ ];
+ for(const [status,body,headers,code,pattern] of cases){const client=createGitHubClient(config,{fetcher:async()=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json',...headers}})});await assert.rejects(client.write(empty,{token:'SYNTH_SECRET',sha}),error=>error.code===code&&pattern.test(error.message)&&!error.message.includes('SYNTH_SECRET'));}
+});

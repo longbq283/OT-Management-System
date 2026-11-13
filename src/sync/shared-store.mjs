@@ -1,5 +1,5 @@
 import {SHARED_CONFIG,sharedEnabled} from './config.mjs';
-import {createGitHubClient,SharedError} from './github-client.mjs';
+import {createGitHubClient,SharedError} from './github-client.mjs?v=0.7.1';
 import {readFullBackup,validateBackup,restoreFullBackup} from '../db/backup.mjs?v=0.7.0';
 import {readDeviceState,writeDeviceState} from '../db/device-state.mjs';
 const revision=backup=>backup.tables.Metadata.find(m=>m.key==='revision')?.value||0;
@@ -10,6 +10,7 @@ export function createSharedStore({enabled=sharedEnabled(),config=SHARED_CONFIG,
   const listeners=new Set();
   const status=()=>({enabled,busy,error,offline,conflict,pending,needsPublish,writer:!!token,initialized:!!base?.data.initialized,fallback:!!base?.fallback,updatedAt:base?.data.updatedAt||null,canWrite:!enabled||!!token&&!busy&&!offline&&!conflict&&!pending&&!needsPublish&&!!base?.sha});
   const emit=()=>{for(const fn of listeners)fn(status());};
+  function recordError(e){error=e.message;if(e.code==='access'){token='';offline=false;}else if(e.code==='conflict')conflict=true;else if(e.code==='uncertain')pending=true;else if(['network','missing','invalid'].includes(e.code))offline=true;}
   const assertWriter=()=>{if(!token)throw new SharedError('Chỉ xem dữ liệu chung. Mở Quản trị GitHub và nhập token có quyền ghi để thay đổi dữ liệu.','access');};
   async function lock(fn){if(busy)throw new SharedError('Đang đồng bộ dữ liệu; vui lòng chờ thao tác hiện tại hoàn tất.','busy');busy=true;emit();try{return await(globalThis.navigator?.locks?navigator.locks.request('ot-management-shared',fn):fn());}finally{busy=false;emit();}}
   async function markClean(remote,{expectedRevision,expectedChecksum}={}){const local=await readFullBackup();if((expectedRevision!==undefined&&revision(local)!==expectedRevision)||(expectedChecksum!==undefined&&local.checksum!==expectedChecksum))throw new SharedError('Dữ liệu cache đã thay đổi ở tab khác trong lúc đồng bộ; giữ lại để đối chiếu.','uncertain');await writeDeviceState({source,remoteRevision:remote.data.revision,localRevision:revision(local),pending:false});base=remote;error='';offline=false;conflict=false;pending=false;needsPublish=false;}
@@ -29,12 +30,12 @@ export function createSharedStore({enabled=sharedEnabled(),config=SHARED_CONFIG,
   }
   async function refresh(options={}){
     if(!enabled)return;
-    return lock(async()=>{try{await ingest(await client.read({token,allowFallback:!token}),options);}catch(e){error=e.message;if(e.code==='conflict')conflict=true;else offline=true;throw e;}});
+    return lock(async()=>{try{await ingest(await client.read({token,allowFallback:!token}),options);}catch(e){recordError(e);throw e;}});
   }
   async function start(){if(!enabled)return;try{await refresh();}catch{/* Keep the local cache visible with an explicit error banner. */}}
   async function connect(value){
     if(typeof value!=='string'||!value.trim()||/\s/.test(value.trim()))throw new SharedError('Nhập token GitHub hợp lệ, không có khoảng trắng.','access');
-    return lock(async()=>{const candidate=value.trim();const remote=await checkRemote(await client.read({token:candidate}));token=candidate;await ingest(remote);});
+    return lock(async()=>{try{const candidate=value.trim();const remote=await checkRemote(await client.read({token:candidate}));token=candidate;await ingest(remote);}catch(e){recordError(e);throw e;}});
   }
   function disconnect(){token='';emit();}
   async function rollback(before,remote,expectedRevision){await restoreFullBackup(before,{expectedRevision,auditAction:'ROLLBACK_SHARED_WRITE'});await markClean(remote,{expectedRevision:expectedRevision+1});}
@@ -58,7 +59,7 @@ export function createSharedStore({enabled=sharedEnabled(),config=SHARED_CONFIG,
     if(!enabled)return operation();assertWriter();
     return lock(async()=>{
       if(offline||conflict||pending||needsPublish||!base?.sha)throw new SharedError('Kho chung chưa sẵn sàng để sửa. Mở Đồng bộ GitHub để xử lý dữ liệu hoặc tải phiên bản mới nhất.','conflict');
-      const remote=await checkRemote(await client.read({token}));
+      let remote;try{remote=await checkRemote(await client.read({token}));}catch(e){recordError(e);throw e;}
       if(remote.data.revision!==base.data.revision){conflict=true;error='Thiết bị khác đã cập nhật kho chung. Bấm tải dữ liệu chung rồi thực hiện lại.';throw new SharedError(error,'conflict');}
       const before=await readFullBackup(),marker=await readDeviceState();
       if(marker?.source===source&&(marker.pending||marker.localRevision!==revision(before))){pending=true;error='Dữ liệu cục bộ đã thay đổi ở tab khác; kiểm tra và đồng bộ trước khi tiếp tục.';throw new SharedError(error,'conflict');}
@@ -71,9 +72,7 @@ export function createSharedStore({enabled=sharedEnabled(),config=SHARED_CONFIG,
           if(applied&&current.checksum===applied.checksum)await rollback(before,remote,revision(current));
           else if(!applied&&current.checksum===before.checksum)await markClean(remote,{expectedRevision:revision(before),expectedChecksum:before.checksum});
           else{pending=true;error='Tab khác đã thay đổi dữ liệu cache. Giữ bản chờ để tránh mất dữ liệu; mở Đồng bộ GitHub để xử lý.';throw new SharedError(error,'uncertain');}
-          error=e.message;
-          if(e.code==='conflict')conflict=true;
-          if(e.code==='access')token='';
+          recordError(e);
         }
         throw e;
       }
@@ -82,10 +81,10 @@ export function createSharedStore({enabled=sharedEnabled(),config=SHARED_CONFIG,
   async function publishLocal({confirmed=false,expectedRevision}={}){
     assertWriter();if(!confirmed)throw new SharedError('Cần xác nhận dùng dữ liệu của thiết bị này làm dữ liệu chung.','confirm');
     return lock(async()=>{
-      const remote=await checkRemote(await client.read({token}));
+      let remote;try{remote=await checkRemote(await client.read({token}));}catch(e){recordError(e);throw e;}
       if(!base||remote.data.revision!==base.data.revision){conflict=true;error='Kho chung đã thay đổi. Xem lại bản chung trước khi xác nhận gửi dữ liệu thiết bị.';throw new SharedError(error,'conflict');}
       const backup=await readFullBackup();if(expectedRevision!==undefined&&expectedRevision!==revision(backup))throw new SharedError('Dữ liệu thiết bị đã thay đổi; hãy mở lại màn hình đồng bộ.','conflict');
-      try{await commitSnapshot(backup,remote);}catch(e){error=e.message;if(e.code==='conflict')conflict=true;if(e.code==='access')token='';throw e;}
+      try{await commitSnapshot(backup,remote);}catch(e){recordError(e);throw e;}
     });
   }
   return {status,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},start,refresh,connect,disconnect,runMutation,publishLocal};

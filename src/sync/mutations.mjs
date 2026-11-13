@@ -1,6 +1,6 @@
 import * as local from '../db/import-store.mjs';
 import {restoreFullBackup as restoreLocal} from '../db/backup.mjs?v=0.7.0';
-import {sharedStore} from './shared-store.mjs';
+import {sharedStore} from './shared-store.mjs?v=0.7.1';
 export const saveImport=(...args)=>sharedStore.runMutation(()=>local.saveImport(...args));
 export const cancelImport=(...args)=>sharedStore.runMutation(()=>local.cancelImport(...args));
 export const saveProfile=(...args)=>sharedStore.runMutation(()=>local.saveProfile(...args));

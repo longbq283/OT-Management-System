@@ -1,5 +1,5 @@
-import {sharedStore} from '../sync/shared-store.mjs';
-import {saveProfile,saveImport,cancelImport} from '../sync/mutations.mjs';
+import {sharedStore} from '../sync/shared-store.mjs?v=0.7.1';
+import {saveProfile,saveImport,cancelImport} from '../sync/mutations.mjs?v=0.7.1';
 import {uploadYears,validUploadYear} from './periods.mjs';
 import {readExcel} from './reader.mjs';
 import {FIELD_LABELS,colName,cellText,detectTemplate,detectPeriod,previewSheet,createProfile} from './engine.mjs?v=0.7.0';

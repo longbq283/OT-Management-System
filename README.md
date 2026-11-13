@@ -18,7 +18,7 @@ Nguồn dùng chung: [`data/shared-ot.json`](data/shared-ot.json), branch `main`
 
 **Lần đầu, thực hiện tại máy đang có dữ liệu OT:**
 
-1. Mở website sau khi GitHub Pages cập nhật bản v0.7.0. Dữ liệu IndexedDB cũ được giữ, có thông báo chưa đưa lên GitHub.
+1. Mở website sau khi GitHub Pages cập nhật bản v0.7.1 trở lên. Dữ liệu IndexedDB cũ được giữ, có thông báo chưa đưa lên GitHub.
 2. Tạo [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new): chọn đúng chủ sở hữu `longbq283`, chọn riêng repository `OT-Management-System`, quyền **Repository permissions → Contents: Read and write**. Chọn thời hạn phù hợp; nếu tài khoản/tổ chức yêu cầu phê duyệt thì hoàn thành trên GitHub.
 3. Mở **Dữ liệu GitHub → Quản trị**, nhập token ngay trong website và bấm **Kết nối quyền ghi**. Không gửi token vào chat, file cấu hình hay commit.
 4. Kiểm tra số cán bộ/import, đánh dấu xác nhận dùng dữ liệu thiết bị làm bản chung, bấm **Sao lưu & gửi dữ liệu máy này lên GitHub**. Website tải bản sao JSON của dữ liệu hiện tại trước khi gửi. Đợi thông báo GitHub đã nhận.
@@ -84,7 +84,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187, 4189 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187, 4189–4190 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
@@ -141,3 +141,12 @@ Kiểm thử mới: `node tests/browser/delete-search.cjs`; chỉ sử dụng d�
 - Khi PUT mất phản hồi, ứng dụng đọc lại revision/checksum để nhận diện commit đã thành công. Nếu không thể xác nhận, giữ bản chờ trên thiết bị, chặn sửa tiếp và cho sao lưu/gửi lại hoặc tải bản chung; không tự ghi đè hoặc báo thành công.
 - Cache dùng khóa Metadata `device:shared` (không có token). Trạng thái thiết bị không xuất vào JSON chia sẻ; restore giữ phần này riêng. Không đổi schema IndexedDB hoặc xóa dữ liệu cũ để nâng cấp.
 - Kiểm thử `tests/browser/shared-github.cjs` dùng GitHub API mô phỏng với nhiều browser context độc lập; không tạo commit thật trong test. Kết quả: [qa-shared-github.md](docs/qa-shared-github.md).
+
+## Thêm dự án và khôi phục kết nối (v0.7.1)
+
+- Bấm **Thêm dự án**. Nếu chưa có token, ứng dụng mở bước kết nối, sau đó tự quay lại biểu mẫu thêm dự án; kho chung trống không cần gửi một bản JSON rỗng trước. Nếu máy có dữ liệu chưa chia sẻ/xung đột, vẫn phải sao lưu và chọn nguồn dữ liệu, sau đó biểu mẫu được mở lại.
+- Mã dự án tối đa 32 ký tự, dùng chữ không dấu/số/gạch ngang/gạch dưới, tự viết hoa khi lưu. Tên, mã thiếu hoặc trùng được báo ngay trong biểu mẫu. Tên trùng kiểm tra theo chữ hoa/thường và khoảng trắng.
+- Lỗi lưu hiển thị **bên trong hộp thoại**; thông tin đã nhập không bị mất. Với lỗi token hoặc xung đột, nút **Kết nối / kiểm tra GitHub và tiếp tục** giữ lại cả mã, tên, người phụ trách, mô tả khi quay lại.
+- Lỗi 401 và 403 thiếu quyền yêu cầu kết nối lại token đúng repository, Contents: Read and write. Giới hạn API 403/429 giữ token hợp lệ; chờ theo thông báo rồi thử lại. 422 định dạng không bị báo nhầm là xung đột SHA; nhánh bảo vệ ghi trực tiếp cũng có thông báo riêng.
+- Trong lúc lưu, nút lưu/hủy tạm khóa để tránh gửi lặp. Tạo dự án từ màn hình upload vẫn chọn dự án vừa tạo, giữ tháng/năm đã chọn.
+- Kiểm thử mới: `node tests/browser/project-recovery.cjs`; fixture kho trống và API GitHub mô phỏng, không thay đổi file dữ liệu chung thật. Xem [qa-project-recovery.md](docs/qa-project-recovery.md).

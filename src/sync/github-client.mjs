@@ -1,5 +1,23 @@
 export const MAX_SHARED_BYTES=20*1024*1024;
-export class SharedError extends Error{constructor(message,code='network'){super(message);this.name='SharedError';this.code=code;}}
+export class SharedError extends Error{constructor(message,code='network',details={}){super(message);this.name='SharedError';this.code=code;Object.assign(this,details);}}
+async function responseError(response,method){
+  let data={};try{data=await response.json();}catch{/* Never expose a raw provider response or credential. */}
+  const status=response.status,message=String(data?.message||'').toLowerCase(),details={status};
+  const remaining=response.headers.get('x-ratelimit-remaining'),retry=response.headers.get('retry-after');
+  if(status===429||(status===403&&(remaining==='0'||retry||/rate limit|abuse detection/.test(message)))){
+    const seconds=Math.max(1,Number(retry)||60);return new SharedError(`GitHub đang giới hạn số lần truy cập. Chờ khoảng ${seconds} giây rồi lưu lại; token vẫn được giữ trong phiên.`,'rate-limit',{...details,retryAfter:seconds});
+  }
+  if((status===403||status===422)&&/protected branch|pull request|repository rule|changes must be made/.test(message))return new SharedError('Nhánh GitHub đang chặn ghi trực tiếp. Kiểm tra quy tắc bảo vệ nhánh và quyền cập nhật file dữ liệu.','protected',details);
+  if(status===401)return new SharedError('Token GitHub không hợp lệ hoặc đã hết hạn. Kết nối lại token trước khi lưu.','access',details);
+  if(status===403)return new SharedError(method==='GET'?'GitHub từ chối truy cập repository. Kết nối lại token có quyền truy cập đúng repository.':'GitHub từ chối quyền ghi. Token phải chọn đúng repository và có quyền Contents: Read and write.','access',details);
+  if(status===409)return new SharedError('Dữ liệu GitHub đã thay đổi. Tải bản chung mới nhất rồi thực hiện lại; không ghi đè thay đổi của thiết bị khác.','conflict',details);
+  if(status===422){
+    const fields=[...new Set((Array.isArray(data?.errors)?data.errors:[]).map(e=>e?.field).filter(f=>['sha','branch','path','content','message'].includes(f)))];
+    return new SharedError(`GitHub không chấp nhận yêu cầu lưu${fields.length?` (trường ${fields.join(', ')})`:''}. Kiểm tra cấu hình nhánh và định dạng file dữ liệu; tải lại dữ liệu không tự sửa được lỗi này.`,'rejected',details);
+  }
+  if(status===404)return new SharedError('Không tìm thấy file dữ liệu chung hoặc tài khoản chưa có quyền truy cập repository.','missing',details);
+  return new SharedError(`GitHub trả lỗi ${status}; chưa xác nhận lưu dữ liệu.`,status>=500?'network':'rejected',details);
+}
 export function encodeContent(text){const bytes=new TextEncoder().encode(text);let raw='';for(let i=0;i<bytes.length;i+=32768)raw+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(raw);}
 export function decodeContent(base64){try{return new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(base64.replace(/\s/g,'')),c=>c.charCodeAt(0)));}catch{throw new SharedError('Nội dung dữ liệu GitHub không phải UTF-8 hợp lệ.','invalid');}}
 export function parseShared(text){
@@ -18,13 +36,8 @@ export function createGitHubClient(config,{fetcher=(...args)=>fetch(...args),fal
     const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
     try{
       const response=await fetcher(url,{method,body,signal:abort.signal,cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',headers:{Accept:raw?'application/vnd.github.raw+json':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(token?{Authorization:`Bearer ${token}`}:{ }),...(body?{'Content-Type':'application/json'}:{})}});
-      if(!response.ok){const status=response.status;
-        if(status===409||status===422)throw new SharedError('Dữ liệu GitHub đã thay đổi. Tải bản chung mới nhất rồi thực hiện lại; không ghi đè thay đổi của thiết bị khác.','conflict');
-        if(status===401||status===403)throw new SharedError('GitHub từ chối truy cập hoặc đã hết hạn mức API. Kiểm tra token, quyền Contents và hạn mức truy cập.','access');
-        if(status===404)throw new SharedError('Không tìm thấy file dữ liệu chung hoặc tài khoản chưa có quyền truy cập.','missing');
-        throw new SharedError(`GitHub trả lỗi ${status}; chưa xác nhận lưu dữ liệu.`,status>=500?'network':'rejected');
-      }
-      return raw?response.text():response.json();
+      if(!response.ok)throw await responseError(response,method);
+      return await (raw?response.text():response.json());
     }catch(e){if(e instanceof SharedError)throw e;throw new SharedError('Không kết nối được GitHub. Kiểm tra mạng và tải lại dữ liệu chung.','network');}finally{clearTimeout(timer);}
   }
   async function read({token='',allowFallback=false}={}){
@@ -36,7 +49,7 @@ export function createGitHubClient(config,{fetcher=(...args)=>fetch(...args),fal
       const text=meta.encoding==='base64'&&typeof meta.content==='string'&&meta.content?decodeContent(meta.content):await request(`${root}/git/blobs/${meta.sha}`,{token,raw:true});
       return {data:parseShared(text),sha:meta.sha,fallback:false};
     }catch(e){
-      if(!allowFallback||!['network','access','missing'].includes(e.code))throw e;
+      if(!allowFallback||!['network','access','missing','rate-limit'].includes(e.code))throw e;
       try{const response=await fetcher(fallbackURL,{cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error();return {data:parseShared(await response.text()),sha:null,fallback:true};}catch{throw e;}
     }
   }
