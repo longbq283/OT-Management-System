@@ -1,8 +1,30 @@
 {
   "format": "ot-management-shared",
   "schemaVersion": 1,
-  "initialized": false,
-  "revision": "initial",
-  "updatedAt": null,
-  "backup": null
+  "initialized": true,
+  "revision": "6e139cdd-c99e-4b09-a43a-9253ab78c3a4",
+  "updatedAt": "2026-11-13T08:57:34.127Z",
+  "backup": {
+    "format": "ot-management",
+    "schemaVersion": 3,
+    "exportedAt": "2026-11-13T08:57:34.126Z",
+    "tables": {
+      "Employees": [],
+      "Projects": [],
+      "OTRecords": [],
+      "OTDetails": [],
+      "Imports": [],
+      "ImportHistory": [],
+      "AuditLogs": [],
+      "periods": [],
+      "mappingProfiles": [],
+      "Metadata": [
+        {
+          "key": "revision",
+          "value": 1
+        }
+      ]
+    },
+    "checksum": "31bce9f54f2babefe561161140eef3da79e7540265df52c61d079b3edab5684a"
+  }
 }
