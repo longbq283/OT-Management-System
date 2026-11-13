@@ -2,12 +2,12 @@
   "format": "ot-management-shared",
   "schemaVersion": 1,
   "initialized": true,
-  "revision": "6e139cdd-c99e-4b09-a43a-9253ab78c3a4",
-  "updatedAt": "2026-11-13T08:57:34.127Z",
+  "revision": "e3f09b16-22d0-4d11-8ac0-1f2e4afd1a56",
+  "updatedAt": "2026-11-13T08:58:39.854Z",
   "backup": {
     "format": "ot-management",
     "schemaVersion": 3,
-    "exportedAt": "2026-11-13T08:57:34.126Z",
+    "exportedAt": "2026-11-13T08:58:39.854Z",
     "tables": {
       "Employees": [],
       "Projects": [],
