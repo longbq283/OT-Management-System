@@ -2,6 +2,8 @@
 
 ## Kiến trúc
 
+Cập nhật v0.7.0: theo yêu cầu lưu dữ liệu công khai dùng chung, bản HTTPS đọc/ghi `data/shared-ot.json` trên GitHub; IndexedDB làm cache. Xem README và qa-shared-github.md về quyền ghi, chuyển dữ liệu cũ và xử lý xung đột. Các mô tả cục bộ dưới đây là kiến trúc gốc trước khi bổ sung kho chung.
+
 Ứng dụng tĩnh HTML/CSS/ES Modules, SheetJS cục bộ và IndexedDB. Tách danh mục master, phiên bản import, bản ghi tháng, chi tiết ngày và truy vấn báo cáo. Mặc định mở dữ liệu thật; demo là chế độ tùy chọn, không seed vào database.
 
 ## Schema 3
@@ -25,7 +27,7 @@ Migration v1/v2 → v3 giữ mọi phiên bản, bổ sung OTDetails mà không 
 5. **Kiểm thử:** dữ liệu nhiều năm, dự án, thay thế, master trùng, gợi ý mâu thuẫn, hạn mức toàn dự án khi lọc, migration, JSON và XLSX.
 6. **GitHub Pages:** kiểm tra subpath, CSP, Worker, asset cục bộ; cập nhật README; commit mã và bằng chứng kiểm thử. Bật Pages là thao tác cấu hình riêng.
 
-Không dùng API key, backend, localStorage hoặc file Excel/danh sách nhân sự thật trong repository.
+Kiến trúc gốc không dùng API key/backend/localStorage và không đưa nhân sự vào repository. Từ v0.7.0, chủ hệ thống chọn công khai JSON nhân sự trên GitHub, dùng token ghi trong bộ nhớ phiên; Excel gốc vẫn không đưa vào repository.
 
 ## Kết quả thực hiện
 

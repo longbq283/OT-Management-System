@@ -1,0 +1,11 @@
+import * as local from '../db/import-store.mjs';
+import {restoreFullBackup as restoreLocal} from '../db/backup.mjs?v=0.7.0';
+import {sharedStore} from './shared-store.mjs';
+export const saveImport=(...args)=>sharedStore.runMutation(()=>local.saveImport(...args));
+export const cancelImport=(...args)=>sharedStore.runMutation(()=>local.cancelImport(...args));
+export const saveProfile=(...args)=>sharedStore.runMutation(()=>local.saveProfile(...args));
+export const saveProject=(...args)=>sharedStore.runMutation(()=>local.saveProject(...args));
+export const createProject=(...args)=>sharedStore.runMutation(()=>local.createProject(...args));
+export const saveEmployee=(...args)=>sharedStore.runMutation(()=>local.saveEmployee(...args));
+export const deleteImport=(...args)=>sharedStore.runMutation(()=>local.deleteImport(...args));
+export const restoreFullBackup=(...args)=>sharedStore.runMutation(()=>restoreLocal(...args));

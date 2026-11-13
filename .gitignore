@@ -11,3 +11,5 @@ playwright-report/
 *backup*.json
 local-data/
 OT_before_restore_*.json
+OT_before_publish_*.json
+OT_before_pull_*.json

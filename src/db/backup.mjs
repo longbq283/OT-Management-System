@@ -4,7 +4,7 @@ import {validateRecord,employeeCode} from '../domain/overtime.mjs';
 import {periodKey} from './import-store.mjs';
 const clone=value=>structuredClone(value);
 async function checksum(data){const bytes=new TextEncoder().encode(JSON.stringify({format:data.format,schemaVersion:data.schemaVersion,tables:data.tables}));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');}
-export async function readFullBackup(){const result={format:'ot-management',schemaVersion:3,exportedAt:new Date().toISOString(),tables:await readTables()};result.checksum=await checksum(result);return result;}
+export async function readFullBackup(){const tables=await readTables();tables.Metadata=tables.Metadata.filter(m=>!m.key.startsWith('device:'));const result={format:'ot-management',schemaVersion:3,exportedAt:new Date().toISOString(),tables};result.checksum=await checksum(result);return result;}
 function convertV1(data){
   if(!Array.isArray(data.imports)||!Array.isArray(data.periods)||!Array.isArray(data.mappingProfiles))throw Error('Backup v1 thiếu imports, periods hoặc mappingProfiles.');
   const tables=Object.fromEntries(STORES.map(s=>[s,[]]));tables.periods=clone(data.periods);tables.mappingProfiles=clone(data.mappingProfiles);tables.Metadata=[{key:'revision',value:1}];
@@ -49,13 +49,14 @@ export async function validateBackup(input){
   if(!Number.isSafeInteger(t.Metadata.find(m=>m.key==='revision')?.value))throw Error('Metadata thiếu revision.');
   data.checksum=await checksum(data);return {data,migrated,counts:Object.fromEntries(STORES.map(s=>[s,t[s].length]))};
 }
-export async function restoreFullBackup(input,{expectedRevision}={}){
+export async function restoreFullBackup(input,{expectedRevision,auditAction='RESTORE_BACKUP'}={}){
   const {data}=await validateBackup(input);const db=await openDatabase();
-  return new Promise((resolve,reject)=>{const tx=db.transaction(STORES,'readwrite'),revision=tx.objectStore('Metadata').get('revision');let problem;
-    revision.onsuccess=()=>{try{const current=revision.result?.value||0;if(expectedRevision!==undefined&&expectedRevision!==current)throw Error('Dữ liệu đã thay đổi từ lúc xem trước. Hãy chọn lại file sao lưu.');
-      for(const name of STORES){const store=tx.objectStore(name);store.clear();for(const row of data.tables[name])if(!(name==='Metadata'&&row.key==='revision'))store.put(row);}
+  return new Promise((resolve,reject)=>{const tx=db.transaction(STORES,'readwrite'),metadata=tx.objectStore('Metadata').getAll();let problem;
+    metadata.onsuccess=()=>{try{const current=metadata.result.find(m=>m.key==='revision')?.value||0;if(expectedRevision!==undefined&&expectedRevision!==current)throw Error('Dữ liệu đã thay đổi từ lúc xem trước. Hãy chọn lại file sao lưu.');
+      for(const name of STORES){const store=tx.objectStore(name);store.clear();for(const row of data.tables[name])if(!(name==='Metadata'&&(row.key==='revision'||row.key.startsWith('device:'))))store.put(row);}
+      for(const row of metadata.result.filter(m=>m.key.startsWith('device:')))tx.objectStore('Metadata').put(row);
       tx.objectStore('Metadata').put({key:'revision',value:current+1});
-      tx.objectStore('AuditLogs').add(auditEvent('RESTORE_BACKUP','database',{sourceChecksum:data.checksum,sourceExportedAt:data.exportedAt,counts:Object.fromEntries(STORES.map(s=>[s,data.tables[s].length]))}));
+      tx.objectStore('AuditLogs').add(auditEvent(auditAction,'database',{sourceChecksum:data.checksum,sourceExportedAt:data.exportedAt,counts:Object.fromEntries(STORES.map(s=>[s,data.tables[s].length]))}));
     }catch(e){problem=e;tx.abort();}};
     tx.oncomplete=()=>resolve();tx.onabort=()=>reject(problem||tx.error||Error('Khôi phục thất bại; dữ liệu cũ vẫn được giữ.'));
   });

@@ -1,6 +1,6 @@
 # OT Management System — quản lý dữ liệu OT lâu dài
 
-Website tiếng Việt bằng HTML, CSS, JavaScript thuần, SheetJS cục bộ và IndexedDB. Quản lý danh mục dự án, nhân sự, dữ liệu tháng/năm và lịch sử phiên bản. Không cần backend, API Key hoặc build; không dùng localStorage làm cơ sở dữ liệu.
+Website tiếng Việt bằng HTML, CSS, JavaScript thuần, SheetJS cục bộ. Từ **v0.7.0**, bản GitHub Pages đọc dữ liệu JSON công khai dùng chung trên GitHub; IndexedDB giữ cache từng thiết bị. Quản lý dự án, nhân sự, tháng/năm và lịch sử phiên bản. Không cần máy chủ riêng hoặc build; người xem không cần tài khoản/token. Quản trị viên dùng token GitHub trong bộ nhớ tab để ghi dữ liệu; không dùng localStorage.
 
 ## Chạy
 
@@ -12,9 +12,25 @@ python3 -m http.server 4173 --bind 0.0.0.0
 
 Dùng trình duyệt mở website được phục vụ ở cổng 4173. Không mở bằng `file://`: ứng dụng dùng ES Modules, Worker và Web Crypto (cần HTTPS hoặc localhost).
 
+## Dùng cùng dữ liệu trên nhiều thiết bị
+
+Nguồn dùng chung: [`data/shared-ot.json`](data/shared-ot.json), branch `main` của `longbq283/OT-Management-System`. File khởi đầu chỉ là thông báo chưa khởi tạo, không có nhân sự/demo. Bản triển khai HTTPS tự bật dữ liệu chung. Localhost giữ chế độ cục bộ để phát triển; thêm `?shared=1#/dashboard` khi muốn kiểm tra tích hợp.
+
+**Lần đầu, thực hiện tại máy đang có dữ liệu OT:**
+
+1. Mở website sau khi GitHub Pages cập nhật bản v0.7.0. Dữ liệu IndexedDB cũ được giữ, có thông báo chưa đưa lên GitHub.
+2. Tạo [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new): chọn đúng chủ sở hữu `longbq283`, chọn riêng repository `OT-Management-System`, quyền **Repository permissions → Contents: Read and write**. Chọn thời hạn phù hợp; nếu tài khoản/tổ chức yêu cầu phê duyệt thì hoàn thành trên GitHub.
+3. Mở **Dữ liệu GitHub → Quản trị**, nhập token ngay trong website và bấm **Kết nối quyền ghi**. Không gửi token vào chat, file cấu hình hay commit.
+4. Kiểm tra số cán bộ/import, đánh dấu xác nhận dùng dữ liệu thiết bị làm bản chung, bấm **Sao lưu & gửi dữ liệu máy này lên GitHub**. Website tải bản sao JSON của dữ liệu hiện tại trước khi gửi. Đợi thông báo GitHub đã nhận.
+5. Máy tính/điện thoại khác mở cùng link sẽ tải dữ liệu chung; không cần nhập token để xem. Nút **Tải dữ liệu chung** lấy bản mới khi trang đã mở sẵn.
+
+Sau khi khởi tạo, upload, thay thế, xóa, sửa dự án/nhân sự, lưu mapping và restore từ tab quản trị đều ghi bản JSON mới vào GitHub. Token chỉ ở bộ nhớ tab, mất khi tải lại/đóng tab hoặc bấm ngắt kết nối. Mỗi phiên quản trị cần kết nối lại token; người xem chỉ đọc, xuất báo cáo và sao lưu.
+
+Nếu thiết bị đã có một kho cục bộ khác với bản chung, ứng dụng giữ kho đó và yêu cầu chọn gửi dữ liệu thiết bị hoặc sao lưu rồi dùng bản chung; không tự gộp hay tự xóa. Dữ liệu chờ xác nhận sau lỗi mạng cũng được giữ qua reload. Khi hai thiết bị cùng sửa, revision/SHA ngăn ghi đè; tải bản mới trước khi thực hiện lại.
+
 ## Quy trình sử dụng thật
 
-1. Website mặc định mở **Dữ liệu đã nhập**, đọc IndexedDB và giữ nguyên khi tải lại. Kho mới rỗng, không tự seed demo.
+1. Website triển khai mặc định đọc **Dữ liệu GitHub**, kiểm tra toàn vẹn rồi cập nhật cache IndexedDB. Không tự seed demo; localhost vẫn dùng kho cục bộ.
 2. Tạo dự án với mã, tên, mô tả và trạng thái ở **Dự án** hoặc ngay trong **Upload OT**. Mã/tên trùng bị từ chối. Dự án có lịch sử chỉ đổi sang ngừng hoạt động; vẫn xem được báo cáo cũ.
 3. Mỗi upload phải chọn rõ **dự án đang hoạt động + năm từ 2026 + tháng**, sau đó mới chọn Excel. Tháng/năm từ file chỉ là gợi ý, không ghi đè lựa chọn.
 4. Với mẫu chấm công hằng tháng, web tự nhận diện mã cán bộ, họ tên, đơn vị, ngày và tổng giờ; bỏ phần ghi chú/chữ ký sau dòng tổng. Kiểm tra các cột đã nhận diện rồi bấm **Kiểm tra & xem trước**. Chỉ mở **Điều chỉnh cột / mẫu Excel khác** khi cần; cấu hình lưu riêng theo dự án.
@@ -45,6 +61,8 @@ assets/js/excel-importer.js      # API đọc/nhận diện/preview Excel
 assets/js/ot-calculator.js       # API tính hạn mức
 assets/js/dashboard.js           # Dashboard và báo cáo nhiều năm
 src/db/                          # Schema 3, migration, transaction, JSON/audit
+src/sync/                        # GitHub API, version/SHA, quản trị và cache
+data/shared-ot.json              # Nguồn dữ liệu công khai dùng chung
 src/domain/                      # Tính OT, chuẩn hóa tên, báo cáo chung
 src/views/                       # Giao diện dashboard/tháng/năm
 src/import/, src/workers/         # Mapping và đọc SheetJS trong Worker
@@ -66,7 +84,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187, 4189 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
@@ -84,16 +102,16 @@ Giữ cả `assets/`, `src/`, `vendor/`; không chọn riêng `assets`. Đườn
 
 ## Dữ liệu và vận hành
 
-- Không có Excel/dữ liệu nhân sự thật trong repository. Fixture và demo đều được tạo từ tên/mã giả lập. Demo chỉ ở bộ nhớ; upload trong chế độ demo không ghi kho thật.
-- File được đọc tại trình duyệt, không gửi lên máy chủ/GitHub. Không analytics hoặc font bên ngoài. Nguồn SheetJS/checksum: [vendor README](vendor/sheetjs/README.md).
+- File dữ liệu chung JSON **công khai theo lựa chọn của chủ hệ thống**, không mã hóa. Tất cả dữ liệu đã gửi lên GitHub và các phiên bản Git đều có thể đọc được. File khởi tạo/fixture/demo trong mã chỉ dùng dữ liệu trống hoặc giả lập. Demo không ghi vào kho chung.
+- Excel gốc chỉ đọc trong trình duyệt, không gửi file nhị phân lên GitHub. Sau xác nhận, dữ liệu đã phân tích được ghi vào JSON chung. Không analytics hoặc font bên ngoài. Nguồn SheetJS/checksum: [vendor README](vendor/sheetjs/README.md).
 - `.gitignore` chặn Excel, CSV, backup, `.env`, `local-data/` và output kiểm thử. Kiểm tra nội dung trước khi commit.
-- Dữ liệu thuộc trình duyệt và origin. Đổi máy/origin hoặc xóa dữ liệu duyệt web có thể mất dữ liệu; sao lưu JSON định kỳ. Chưa có đồng bộ, tài khoản hoặc phân quyền backend.
+- Dữ liệu đã được GitHub xác nhận nằm ở repository, dùng được từ nhiều thiết bị. Cache, dữ liệu cũ chưa chia sẻ hoặc bản chờ xác nhận vẫn thuộc trình duyệt/origin; xuất sao lưu trước khi xóa dữ liệu trình duyệt. Xem trạng thái ở đầu trang để biết nguồn dữ liệu.
 - Backup tối đa 20 MB và 100.000 dòng/bảng; checksum phát hiện file hỏng, không xác thực người tạo. Nhật ký cục bộ không phải audit server chống sửa đổi.
 - Mẫu chấm công do người dùng cung cấp đã được kiểm tra cục bộ bằng Worker ở bước xem trước; không lưu nhân sự vào kho chính và không đưa file vào Git. Bộ kiểm thử trong repository chỉ dùng dữ liệu giả lập. Chưa kiểm tra giao diện Microsoft Excel desktop; XLSX xuất ra được đọc lại bằng SheetJS.
 
 ## Khi không thấy dữ liệu vừa nhập
 
-Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3. Sau khi lưu, ứng dụng xóa bộ lọc cũ và mở đúng kỳ vừa nhập. Khi tải lại trang, tự chọn kỳ của lần import có hiệu lực gần nhất. Màn hình Tra cứu/Lịch sử cho biết số file/bản ghi thực có trong IndexedDB, có nút **Xem dữ liệu mới nhất** và chọn lại kỳ đã lưu. Bộ lọc vẫn có thể cho kết quả rỗng khi chọn kỳ/dự án không có dữ liệu; không cần xóa dữ liệu trình duyệt.
+Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3. Trên bản GitHub Pages, cần kết nối token ghi; lưu chỉ báo thành công khi GitHub xác nhận. Sau khi lưu, ứng dụng xóa bộ lọc cũ và mở đúng kỳ vừa nhập. Khi tải lại trang, tự chọn kỳ của lần import có hiệu lực gần nhất. Màn hình Tra cứu/Lịch sử cho biết số file/bản ghi thực có trong IndexedDB, có nút **Xem dữ liệu mới nhất** và chọn lại kỳ đã lưu. Bộ lọc vẫn có thể cho kết quả rỗng khi chọn kỳ/dự án không có dữ liệu; không cần xóa dữ liệu trình duyệt.
 
 ## Mẫu chấm công hằng tháng
 
@@ -113,3 +131,13 @@ Chọn file chỉ đọc và xem trước; cần xác nhận lưu ở bước 3.
 - CSV và mọi sheet Excel xuất từ Báo cáo giữ đúng bộ lọc và tìm kiếm tại lúc bấm xuất. Nút **Xóa tìm kiếm** trả về toàn bộ cán bộ của kỳ/dự án đang chọn.
 
 Kiểm thử mới: `node tests/browser/delete-search.cjs`; chỉ sử dụng dữ liệu giả lập. Xem [bảng kết quả](docs/qa-delete-search.md).
+
+## Vận hành dữ liệu GitHub
+
+- Lưu JSON qua GitHub Contents API với SHA hiện tại, không đặt token trong website. API GitHub kiểm tra quyền ghi; giấu nút trên giao diện chỉ hỗ trợ trải nghiệm, không thay thế quyền GitHub.
+- Đọc công khai không token có hạn mức GitHub API; nếu API bị lỗi/hết hạn mức, website thử JSON do GitHub Pages phục vụ. Bản dự phòng có thể chậm theo lần deploy; có cache sạch thì không tự thay bằng bản dự phòng khác revision. Lỗi đọc không làm mất cache.
+- GitHub là kho file có phiên bản, không phải cơ sở dữ liệu giao dịch cho nhiều người ghi liên tục. Mỗi thay đổi xuất toàn bộ snapshot; giới hạn ứng dụng 20 MB/file, 100.000 dòng/bảng. Nội dung trên 1 MB đọc bằng endpoint blob bất biến theo SHA.
+- Xóa import loại khỏi giờ OT, vẫn giữ lịch sử nghiệp vụ/Git theo thiết kế. Khôi phục backup cũng phải được GitHub xác nhận mới thành bản dùng chung.
+- Khi PUT mất phản hồi, ứng dụng đọc lại revision/checksum để nhận diện commit đã thành công. Nếu không thể xác nhận, giữ bản chờ trên thiết bị, chặn sửa tiếp và cho sao lưu/gửi lại hoặc tải bản chung; không tự ghi đè hoặc báo thành công.
+- Cache dùng khóa Metadata `device:shared` (không có token). Trạng thái thiết bị không xuất vào JSON chia sẻ; restore giữ phần này riêng. Không đổi schema IndexedDB hoặc xóa dữ liệu cũ để nâng cấp.
+- Kiểm thử `tests/browser/shared-github.cjs` dùng GitHub API mô phỏng với nhiều browser context độc lập; không tạo commit thật trong test. Kết quả: [qa-shared-github.md](docs/qa-shared-github.md).

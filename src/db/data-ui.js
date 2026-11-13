@@ -1,4 +1,5 @@
-import {readFullBackup,validateBackup,restoreFullBackup} from './backup.mjs';
+import {restoreFullBackup} from '../sync/mutations.mjs';
+import {readFullBackup,validateBackup} from './backup.mjs?v=0.7.0';
 import {readImportState} from './import-store.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createRestoreUI({download,notify,onRestored}){
