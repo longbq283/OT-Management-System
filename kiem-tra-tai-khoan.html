@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://zlvukgylpcuwpvmkuxgm.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="theme-color" content="#123f35">
+  <title>Tài khoản · OT Workspace</title>
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="stylesheet" href="./assets/css/supabase-workspace.css">
+  <script type="module" src="./assets/js/supabase-auth-check.js"></script>
+</head>
+<body>
+  <header class="account-header"><strong>OT Workspace</strong><button id="logout" type="button" hidden>Đăng xuất</button></header>
+  <main class="account-main">
+    <p id="status" role="status" aria-live="polite" hidden></p>
+    <p id="error" role="alert" hidden></p>
+    <section id="auth" aria-label="Tài khoản">
+      <nav class="account-nav" aria-label="Thao tác tài khoản">
+        <button type="button" data-auth="login">Đăng nhập</button>
+        <button type="button" data-auth="register">Đăng ký</button>
+        <button type="button" data-auth="verify">Xác nhận email</button>
+      </nav>
+      <form id="login" class="account-card">
+        <h1>Đăng nhập</h1>
+        <label>Email BIDV<input name="email" type="email" autocomplete="username" required></label>
+        <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Đăng nhập</button>
+      </form>
+      <form id="register" class="account-card" hidden>
+        <h1>Đăng ký</h1>
+        <label>Email BIDV<input name="email" type="email" autocomplete="email" required></label>
+        <label>Họ tên đầy đủ<input name="fullName" autocomplete="name" maxlength="200" required></label>
+        <label>Mã cán bộ<input name="employeeCode" inputmode="numeric" pattern="[0-9]{1,8}" maxlength="8" required></label>
+        <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="primary">Đăng ký</button>
+      </form>
+      <form id="verify" class="account-card" hidden>
+        <h1>Xác nhận email</h1>
+        <label>Email BIDV<input name="email" type="email" autocomplete="email" required></label>
+        <label>Mã OTP đăng ký<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" required></label>
+        <div class="account-actions">
+          <button class="primary">Xác nhận OTP</button>
+          <button id="resend" type="button">Gửi lại mã OTP</button>
+        </div>
+      </form>
+      <a class="legacy-link" href="./?legacy=1#/backup">Mở bản cục bộ để sao lưu dữ liệu cũ</a>
+    </section>
+    <section id="profile" class="account-card" aria-label="Hồ sơ" hidden></section>
+    <div id="ot-workspace" hidden></div>
+  </main>
+</body>
+</html>

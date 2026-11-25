@@ -77,7 +77,9 @@ async function run() {
     await page.locator('#confirm-year').check();
     await page.locator('[data-action="confirm-import"]').click();
     await page.waitForURL('**/#/history');
-    assert.equal(await page.getByText('Chỉ mô phỏng', { exact: true }).count(), 1);
+    const simulated = page.getByText('Chỉ mô phỏng', { exact: true });
+    await simulated.waitFor();
+    assert.equal(await simulated.count(), 1);
     console.log('PASS: thêm dự án tạm, chặn bổ sung trùng và xác nhận kỳ trước import mô phỏng.');
     await goto('reports');
     const [report] = await Promise.all([page.waitForEvent('download'), page.locator('[data-action="export-report"]').click()]);

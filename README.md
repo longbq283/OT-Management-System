@@ -1,6 +1,6 @@
 # OT Management System — quản lý dữ liệu OT lâu dài
 
-Website tiếng Việt bằng HTML, CSS, JavaScript thuần, SheetJS cục bộ. Từ **v0.7.0**, bản GitHub Pages đọc dữ liệu JSON công khai dùng chung trên GitHub; IndexedDB giữ cache từng thiết bị. Quản lý dự án, nhân sự, tháng/năm và lịch sử phiên bản. Không cần máy chủ riêng hoặc build; người xem không cần tài khoản/token. Quản trị viên dùng token GitHub trong bộ nhớ tab để ghi dữ liệu; không dùng localStorage.
+Website tiếng Việt bằng HTML, CSS, JavaScript thuần và SheetJS cục bộ. Bản GitHub Pages mở không gian OT dùng Supabase, có tài khoản BIDV, duyệt hồ sơ, phân công dự án và khóa kỳ. Xem [hướng dẫn triển khai Supabase và chuyển dữ liệu](docs/supabase.md). Các hướng dẫn dưới đây về IndexedDB và GitHub là tài liệu của bản cục bộ và đồng bộ cũ.
 
 ## Chạy
 
@@ -10,11 +10,11 @@ npm start
 python3 -m http.server 4173 --bind 0.0.0.0
 ```
 
-Dùng trình duyệt mở website được phục vụ ở cổng 4173. Không mở bằng `file://`: ứng dụng dùng ES Modules, Worker và Web Crypto (cần HTTPS hoặc localhost).
+Dùng cổng 4173. Mở `/kiem-tra-tai-khoan.html` để chạy không gian Supabase hoặc `/` để kiểm tra bản IndexedDB trên localhost. Không mở bằng `file://`: ứng dụng dùng ES Modules, Worker và Web Crypto (cần HTTPS hoặc localhost).
 
-## Dùng cùng dữ liệu trên nhiều thiết bị
+## Đồng bộ GitHub cũ (tài liệu lưu trữ)
 
-Nguồn dùng chung: [`data/shared-ot.json`](data/shared-ot.json), branch `main` của `longbq283/OT-Management-System`. File khởi đầu chỉ là thông báo chưa khởi tạo, không có nhân sự/demo. Bản triển khai HTTPS tự bật dữ liệu chung. Localhost giữ chế độ cục bộ để phát triển; thêm `?shared=1#/dashboard` khi muốn kiểm tra tích hợp.
+Nguồn dùng chung: [`data/shared-ot.json`](data/shared-ot.json), branch `main` của `longbq283/OT-Management-System`. File khởi đầu chỉ là thông báo chưa khởi tạo, không có nhân sự/demo. Bản GitHub Pages hiện dùng Supabase. Localhost giữ chế độ cục bộ để phát triển; các bài kiểm thử đồng bộ GitHub mô phỏng dùng `?shared=1#/dashboard`.
 
 **Lần đầu, thực hiện tại máy đang có dữ liệu OT:**
 
@@ -84,7 +84,7 @@ npx playwright install chromium # Nếu chưa có /usr/bin/chromium
 npm test
 ```
 
-Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187, 4189–4190 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
+Node 20+, Python 3, Chromium; có thể đặt `BROWSER_EXECUTABLE`. Các server kiểm thử dùng cổng 4175–4179, 4181, 4184–4187, 4189–4191 và tự đóng. Browser context tạm, không dùng dữ liệu trình duyệt người dùng.
 
 - `npm run test:unit`: tính giờ, mapping, hạn mức, bộ lọc toàn dự án và xuất Excel.
 - `npm run test:browser`: UI, IndexedDB, JSON, migration v1/v2→v3, rollback và đường dẫn con GitHub Pages.
