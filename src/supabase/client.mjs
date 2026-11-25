@@ -37,6 +37,23 @@ const errorMessages = {
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
 };
 
+function signupServerMessage(response, result, code) {
+  const details = [result?.message, result?.msg, result?.error_description]
+    .filter(value => typeof value === 'string').join(' ');
+  let message = 'Máy chủ Supabase báo lỗi khi đăng ký. Quản trị viên cần kiểm tra Auth Logs của yêu cầu POST /signup.';
+  if (/error sending confirmation (email|mail)|error sending email/i.test(details)) {
+    message = 'Supabase gặp lỗi khi gửi email xác nhận. Quản trị viên cần kiểm tra SMTP trong Auth Logs.';
+  } else if (/database error saving new user/i.test(details)) {
+    message = 'Supabase gặp lỗi khi lưu tài khoản. Quản trị viên cần kiểm tra Postgres Logs và trigger tạo hồ sơ OT.';
+  } else if (typeof code === 'string' && code.startsWith('hook_')) {
+    message = 'Supabase gặp lỗi ở bước kiểm tra trước khi tạo tài khoản. Quản trị viên cần kiểm tra Auth Hook và Auth Logs.';
+  }
+
+  const requestId = response.headers.get('sb-request-id') ?? response.headers.get('x-request-id');
+  return message + ' (HTTP ' + response.status + ')' +
+    (requestId && /^[a-zA-Z0-9_-]{8,128}$/.test(requestId) ? ' Mã yêu cầu: ' + requestId + '.' : '');
+}
+
 export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)) {
   let session = null;
 
@@ -62,7 +79,9 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
       const code = result?.error_code ?? result?.code;
       const key = Object.hasOwn(errorMessages, result?.message) ? result.message : code;
       const message = Object.hasOwn(errorMessages, key) ? errorMessages[key] : undefined;
-      const error = Error(message ?? (response.status === 401
+      const signupFailure = path === '/auth/v1/signup' && response.status >= 500
+        ? signupServerMessage(response, result, code) : undefined;
+      const error = Error(signupFailure ?? message ?? (response.status === 401
         ? 'Phiên đã hết hạn. Vui lòng đăng nhập lại.'
         : 'Supabase không xử lý được yêu cầu (HTTP ' + response.status + ').'));
       error.status = response.status;

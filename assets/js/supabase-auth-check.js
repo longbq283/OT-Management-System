@@ -1,4 +1,4 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=2';
 import { mountWorkspace } from '../../src/supabase/workspace.js';
 
 const api = createSupabaseClient();
@@ -7,6 +7,9 @@ const profilePanel = document.querySelector('#profile');
 const workspace = document.querySelector('#ot-workspace');
 const logout = document.querySelector('#logout');
 const authForms = [...auth.querySelectorAll('form')];
+const register = document.querySelector('#register');
+const signupFields = document.querySelector('#signup-fields');
+const signupOtp = document.querySelector('#signup-otp');
 const statuses = { pending: 'Chờ quản trị viên duyệt', active: 'Đang hoạt động', disabled: 'Đã vô hiệu hóa' };
 let closeWorkspace;
 let busy = false;
@@ -19,7 +22,21 @@ function notice(message = '', isError = false) {
   }
 }
 
+function setOtpStep(active) {
+  signupFields.disabled = active;
+  document.querySelector('#signup-submit').textContent = active ? 'Xác nhận OTP' : 'Đăng ký';
+  document.querySelector('#open-otp').hidden = active;
+  document.querySelector('#resend').hidden = !active;
+  document.querySelector('#edit-signup').hidden = !active;
+  signupOtp.hidden = !active;
+  signupOtp.disabled = !active;
+  register.elements.email.readOnly = active;
+  register.elements.password.value = '';
+  register.elements.otp.value = '';
+}
+
 function showForm(id, email) {
+  setOtpStep(false);
   for (const form of authForms) {
     form.reset();
     form.hidden = form.id !== id;
@@ -51,6 +68,7 @@ function expire(error) {
 async function showProfile() {
   auth.hidden = true;
   logout.hidden = false;
+  setOtpStep(false);
   for (const form of authForms) form.reset();
   profilePanel.hidden = false;
   const ownId = api.userId;
@@ -128,22 +146,42 @@ for (const form of authForms) {
     if (form.elements.otp) form.elements.otp.value = '';
     run(async () => {
       const email = normalizeEmail(fields.email);
-      if (form.id === 'register') {
+      if (form === register && !signupOtp.hidden) {
+        await api.verify(email, fields.otp);
+        await showProfile();
+      } else if (form === register) {
         if (!fields.fullName.trim()) throw Error('Vui lòng nhập họ tên đầy đủ.');
         await api.signUp({ ...fields, email });
-        showForm('verify', email);
-        notice('Nếu yêu cầu hợp lệ, mã OTP đã được gửi đến email BIDV.');
+        register.elements.email.value = email;
+        setOtpStep(true);
+        register.elements.otp.focus();
+        notice('Yêu cầu đăng ký đã được tiếp nhận. Kiểm tra email BIDV để lấy mã OTP.');
       } else {
-        if (form.id === 'verify') await api.verify(email, fields.otp);
-        else await api.signIn(email, fields.password);
+        await api.signIn(email, fields.password);
         await showProfile();
       }
     });
   });
 }
 
+document.querySelector('#open-otp').addEventListener('click', () => {
+  if (!register.elements.email.reportValidity()) return;
+  run(() => {
+    register.elements.email.value = normalizeEmail(register.elements.email.value);
+    setOtpStep(true);
+    register.elements.otp.focus();
+    notice('Nhập mã đã nhận hoặc bấm Gửi lại mã OTP.');
+  });
+});
+
+document.querySelector('#edit-signup').addEventListener('click', () => {
+  setOtpStep(false);
+  register.elements.email.focus();
+  notice();
+});
+
 document.querySelector('#resend').addEventListener('click', () => run(async () => {
-  const email = normalizeEmail(document.querySelector('#verify').elements.email.value);
+  const email = normalizeEmail(register.elements.email.value);
   await api.resend(email);
   notice('Đã yêu cầu gửi lại mã OTP đăng ký.');
 }));

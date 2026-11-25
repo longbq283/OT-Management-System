@@ -12,6 +12,16 @@ Trang tài khoản và nghiệp vụ là `kiem-tra-tai-khoan.html`. GitHub Pages
 
 Trang dùng khóa publishable công khai. Mật khẩu và OTP chỉ gửi trực tiếp đến Supabase. Access token được giữ trong bộ nhớ của tab. Tải lại trang hoặc hết hạn phiên cần đăng nhập lại. Đăng xuất xóa ngay giao diện và dữ liệu của tài khoản khỏi tab.
 
+## Đăng ký báo HTTP 500
+
+HTTP 500 khi bấm **Đăng ký** là phản hồi lỗi của máy chủ cho `POST /auth/v1/signup`. Trong Supabase Dashboard, mở **Logs → Auth**, tìm yêu cầu theo thời điểm thử hoặc mã yêu cầu nếu giao diện hiển thị.
+
+- Nếu log ghi `Database error saving new user`, mở **Logs → Postgres** cùng thời điểm để tìm lỗi gốc. Kiểm tra trigger trên `auth.users`, hàm `public.ot_handle_auth_user()` và ràng buộc của `public.ot_profiles`. Ứng dụng gửi `full_name` và `employee_code` đã đủ tám chữ số.
+- Nếu log báo Auth Hook thất bại, kiểm tra cấu hình **Before User Created**, hàm `public.ot_require_bidv_email(jsonb)` và quyền thực thi của `supabase_auth_admin`.
+- Nếu log ghi `Error sending confirmation email`, kiểm tra cấu hình SMTP, địa chỉ người gửi và nội dung mẫu **Confirm signup**. Khi tài khoản đã được tạo nhưng email chưa đến, dùng **Đã đăng ký? Nhập mã OTP → Gửi lại mã OTP** ngay trong khung Đăng ký.
+
+Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng tư khi trao đổi. Giữ mật khẩu, OTP và thông tin xác thực SMTP trong giao diện thiết lập tương ứng.
+
 ## Quyền và nghiệp vụ
 
 - Hồ sơ chờ duyệt hoặc bị vô hiệu hóa chỉ đọc được hồ sơ của mình. Người dùng hoạt động đọc OT của chính mình trong các dự án được phân công. Tài khoản quản trị hoạt động quản lý danh mục, phân công, kỳ nhập và nhật ký. Các bảng cho tài khoản ứng dụng quyền đọc theo RLS. Thao tác ghi đi qua RPC.

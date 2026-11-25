@@ -21,6 +21,7 @@ const entries = [];
 const calls = [];
 let networkError = false;
 let duplicate = false;
+let signupFailure;
 
 async function routeRequest(route) {
   const req = route.request();
@@ -31,9 +32,14 @@ async function routeRequest(route) {
   const actor = [account, admin, missing].find(user => token === 'fixture-session-' + user.id);
   calls.push({ endpoint, fields, actor: actor?.id });
   const send = (value, status = 200) => route.fulfill({ status, json: value,
-    headers: { 'access-control-allow-origin': '*' } });
+    headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
+      'sb-request-id': 'fixture-request-id' } });
   const session = user => ({ access_token: 'fixture-session-' + user.id, user: { id: user.id } });
-  if (endpoint.endsWith('/signup')) return networkError ? route.abort() : send({ user: { id: account.id }, identities: duplicate ? [] : [{}] });
+  if (endpoint.endsWith('/signup')) {
+    if (networkError) return route.abort();
+    if (signupFailure) return send(signupFailure, 500);
+    return send({ user: { id: account.id }, identities: duplicate ? [] : [{}] });
+  }
   if (endpoint.endsWith('/resend')) return send({});
   if (endpoint.endsWith('/verify')) return fields.token === '123456' ? send(session(account)) : send({ error_code: 'otp_expired' }, 403);
   if (endpoint.endsWith('/token')) return send(session([admin, account, missing].find(user => user.email === fields.email)));
@@ -120,7 +126,10 @@ async function run() {
     await register.locator('[name=email]').fill('fixture-user@example.invalid');
     await register.locator('[name=fullName]').fill(account.full_name);
     await register.locator('[name=employeeCode]').fill('23');
-    const registerButton = register.locator('button');
+    const registerButton = register.locator('#signup-submit');
+    const otp = register.locator('[name=otp]');
+    assert.equal(await otp.isVisible(), false);
+    assert.equal(await page.locator('[data-auth="verify"]').count(), 0);
     async function submitRegistration() {
       await register.locator('[name=password]').fill('Fixture-test-password');
       await registerButton.click();
@@ -133,21 +142,58 @@ async function run() {
     await submitRegistration();
     await sleepUntilMessage(page, 'Không kết nối được');
     networkError = false;
+    signupFailure = { error_code: 'unexpected_failure', msg: 'Database error saving new user' };
+    await submitRegistration();
+    await sleepUntilMessage(page, 'Postgres Logs và trigger tạo hồ sơ OT');
+    assert.match(await page.locator('#error').innerText(), /HTTP 500.*fixture-request-id/);
+    assert.equal(await otp.isVisible(), false);
+    assert.equal(await register.locator('[name=fullName]').inputValue(), account.full_name);
+    assert.equal(await register.locator('[name=employeeCode]').inputValue(), '23');
+    assert.equal(await register.locator('[name=password]').inputValue(), '');
+
+    signupFailure = { error_code: 'unexpected_failure', msg: 'Error sending confirmation email' };
+    await submitRegistration();
+    await sleepUntilMessage(page, 'kiểm tra SMTP trong Auth Logs');
+    signupFailure = { error_code: 'hook_timeout' };
+    await submitRegistration();
+    await sleepUntilMessage(page, 'kiểm tra Auth Hook và Auth Logs');
+    signupFailure = { error_code: 'unexpected_failure', msg: 'Internal fixture-only detail' };
+    await submitRegistration();
+    await sleepUntilMessage(page, 'Auth Logs của yêu cầu POST /signup');
+    assert.doesNotMatch(await page.locator('#error').innerText(), /fixture-only detail/);
+    signupFailure = undefined;
+
+    const requestsBeforeRecovery = calls.length;
+    await register.locator('#open-otp').click();
+    await otp.waitFor();
+    assert.equal(calls.length, requestsBeforeRecovery);
+    await register.locator('#edit-signup').click();
+    assert.equal(await otp.isVisible(), false);
+    assert.equal(await register.locator('[name=email]').isEditable(), true);
+
     duplicate = true;
     await submitRegistration();
     await sleepUntilMessage(page, 'Email đã đăng ký');
     duplicate = false;
     await submitRegistration();
-    await page.locator('#verify').waitFor();
+    await otp.waitFor();
+    assert.equal(await register.getByRole('heading', { name: 'Đăng ký', exact: true }).isVisible(), true);
+    assert.equal(await page.locator('[data-auth="register"]').getAttribute('aria-current'), 'true');
+    assert.equal(await register.locator('[name=email]').inputValue(), account.email);
+    assert.equal(await register.locator('[name=email]').isEditable(), false);
+    assert.equal(await register.locator('[name=employeeCode]').inputValue(), '23');
+    assert.equal(await otp.evaluate(el => el === document.activeElement), true);
     assert.deepEqual(calls.find(call => call.endpoint.endsWith('/signup')).fields.data,
       { full_name: account.full_name, employee_code: '00000023' });
     await page.locator('#resend').click();
     await sleepUntilMessage(page, 'Đã yêu cầu gửi lại mã');
-    await page.locator('#verify [name=otp]').fill('654321');
-    await page.locator('#verify button.primary').click();
+    assert.deepEqual(calls.find(call => call.endpoint.endsWith('/resend')).fields,
+      { email: account.email, type: 'signup' });
+    await otp.fill('654321');
+    await otp.press('Enter');
     await sleepUntilMessage(page, 'Mã OTP không đúng hoặc đã hết hạn');
-    await page.locator('#verify [name=otp]').fill('123456');
-    await page.locator('#verify button.primary').click();
+    await otp.fill('123456');
+    await otp.press('Enter');
     await sleepUntilMessage(page, 'Chờ quản trị viên duyệt');
     assert.equal(calls.find(call => call.endpoint.endsWith('/verify')).fields.type, 'signup');
     assert.equal(await page.locator('#ot-workspace').isVisible(), false);

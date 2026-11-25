@@ -8,8 +8,8 @@
   <title>Tài khoản · OT Workspace</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./assets/css/style.css">
-  <link rel="stylesheet" href="./assets/css/supabase-workspace.css">
-  <script type="module" src="./assets/js/supabase-auth-check.js"></script>
+  <link rel="stylesheet" href="./assets/css/supabase-workspace.css?v=2">
+  <script type="module" src="./assets/js/supabase-auth-check.js?v=2"></script>
 </head>
 <body>
   <header class="account-header"><strong>OT Workspace</strong><button id="logout" type="button" hidden>Đăng xuất</button></header>
@@ -20,7 +20,6 @@
       <nav class="account-nav" aria-label="Thao tác tài khoản">
         <button type="button" data-auth="login">Đăng nhập</button>
         <button type="button" data-auth="register">Đăng ký</button>
-        <button type="button" data-auth="verify">Xác nhận email</button>
       </nav>
       <form id="login" class="account-card">
         <h1>Đăng nhập</h1>
@@ -31,18 +30,19 @@
       <form id="register" class="account-card" hidden>
         <h1>Đăng ký</h1>
         <label>Email BIDV<input name="email" type="email" autocomplete="email" required></label>
-        <label>Họ tên đầy đủ<input name="fullName" autocomplete="name" maxlength="200" required></label>
-        <label>Mã cán bộ<input name="employeeCode" inputmode="numeric" pattern="[0-9]{1,8}" maxlength="8" required></label>
-        <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-        <button class="primary">Đăng ký</button>
-      </form>
-      <form id="verify" class="account-card" hidden>
-        <h1>Xác nhận email</h1>
-        <label>Email BIDV<input name="email" type="email" autocomplete="email" required></label>
-        <label>Mã OTP đăng ký<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" required></label>
+        <fieldset id="signup-fields">
+          <label>Họ tên đầy đủ<input name="fullName" autocomplete="name" maxlength="200" required></label>
+          <label>Mã cán bộ<input name="employeeCode" inputmode="numeric" pattern="[0-9]{1,8}" maxlength="8" required></label>
+          <label>Mật khẩu<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        </fieldset>
+        <fieldset id="signup-otp" hidden disabled>
+          <label>Mã OTP đăng ký<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" required></label>
+        </fieldset>
         <div class="account-actions">
-          <button class="primary">Xác nhận OTP</button>
-          <button id="resend" type="button">Gửi lại mã OTP</button>
+          <button id="signup-submit" class="primary">Đăng ký</button>
+          <button id="open-otp" type="button" aria-controls="signup-otp">Đã đăng ký? Nhập mã OTP</button>
+          <button id="resend" type="button" hidden>Gửi lại mã OTP</button>
+          <button id="edit-signup" type="button" hidden>Sửa thông tin đăng ký</button>
         </div>
       </form>
       <a class="legacy-link" href="./?legacy=1#/backup">Mở bản cục bộ để sao lưu dữ liệu cũ</a>

@@ -25,3 +25,7 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .account-main summary { cursor: pointer; font-weight: 600; }
 .account-main .account-muted { color: #456256; }
 @media (max-width: 32rem) { .account-main { margin-top: 1rem; } }
+
+#register fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+#register #signup-otp { border-top: 1px solid #dce7e1; margin-top: .25rem; padding-top: .9rem; }
+#register .account-actions { margin-bottom: 0; }
