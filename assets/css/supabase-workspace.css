@@ -69,3 +69,5 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .project-role-state { align-self: center; padding: .3rem .55rem; font-size: .875rem; }
 .account-main .month-sheet input[aria-invalid="true"] { border-color: #a72d2d; background: #fff0f0; }
 .manual-unit { max-width: 28rem; }
+.manual-review { border-top: 1px solid #dce7e1; margin-top: 1rem; padding-top: .85rem; }
+.manual-review label { margin-top: .7rem; }

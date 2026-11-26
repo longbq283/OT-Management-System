@@ -109,7 +109,7 @@ async function routeRequest(route) {
     const period = periods.find(item => item.project_id === fields.p_project);
     assert.equal(fields.p_period_revision, period.revision);
     assert.equal(fields.p_data_revision, period.data_revision);
-    assert.equal(fields.p_batch, false);
+    assert.equal(fields.p_batch, actor === admin);
     assert.ok(period.is_open);
     const calendar = calendars.find(item => item.project_id === fields.p_project);
     for (const row of fields.p_rows) for (const day of row.days) {
@@ -118,10 +118,10 @@ async function routeRequest(route) {
       assert.ok(day.minutes <= calendar.limit_minutes[index]);
     }
     if (fields.p_replace) for (const row of entries) {
-      if (row.project_id === fields.p_project && row.user_id === actor.id) row.active = false;
+      if (row.project_id === fields.p_project && (fields.p_batch || row.user_id === actor.id)) row.active = false;
     }
     ++period.data_revision;
-    for (const row of fields.p_rows) entries.push({ ...row, id: entries.length + 1, user_id: actor.id,
+    for (const row of fields.p_rows) entries.push({ ...row, id: entries.length + 1, user_id: fields.p_batch ? account.id : actor.id,
       project_id: fields.p_project, year: fields.p_year, month: fields.p_month, active: true,
       period_data_revision: period.data_revision,
       total_minutes: row.nt_minutes + row.nn_minutes + row.unclassified_minutes });
@@ -265,6 +265,8 @@ async function run() {
     await operator.getByRole('heading', { name: 'Lịch và kỳ nhập OT' }).waitFor();
     assert.equal(await operator.locator('#manual-ot').count(), 0);
     await operator.locator('[data-role=system]').click();
+    await operator.locator('[data-pane=import]').click();
+    await operator.locator('#excel-ot').waitFor();
     await operator.locator('[data-pane=management]').click();
     await operator.getByText('Duyệt tài khoản', { exact: true }).click();
     await operator.locator('#admin-profile [name=user]').selectOption(account.id);
@@ -324,13 +326,20 @@ async function run() {
     assert.equal(await dayOne.inputValue(), '1,5');
     assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
     assert.equal(await page.locator('#manual-ot tr').nth(1).locator('td').nth(1).innerText(), 'L');
+    const manual = page.locator('#manual-ot');
+    const summary = manual.locator('#manual-summary');
+    const confirm = manual.getByRole('checkbox');
+    const saveButton = manual.getByRole('button', { name: 'Xác nhận lưu OT' });
+    assert.equal(await page.locator('#excel-ot').count(), 0);
+    assert.equal(await manual.getByRole('button', { name: 'Xem trước', exact: true }).count(), 0);
+    assert.match(await summary.innerText(), /Ban cũ giả lập/);
+    assert.equal(await saveButton.isDisabled(), true);
     await dayOne.fill('25');
-    await page.locator('#manual-ot button').click();
     await sleepUntilMessage(page, 'Ngày 1 cần số giờ từ 0 đến 24');
+    assert.equal(await confirm.isDisabled(), true);
     await dayOne.fill('21');
     assert.equal(await dayOne.getAttribute('aria-invalid'), 'true');
-    await page.locator('#manual-ot button').click();
-    await sleepUntilMessage(page, 'Ngày 01 vượt giới hạn 20 giờ OT');
+    await sleepUntilMessage(page, 'Ngày 1 vượt giới hạn 20 giờ OT');
     await dayOne.evaluate(input => {
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', '20\t5,0');
@@ -338,32 +347,39 @@ async function run() {
     });
     assert.equal(await dayTwo.inputValue(), '5,0');
     await sleepUntilMessage(page, 'Tổng OT 25 giờ');
+    assert.equal(await summary.locator('tbody tr td').last().innerText(), '25');
     await page.locator('[data-pane=report]').click();
-    assert.equal(await page.locator('#manual-ot').isVisible(), false);
+    assert.equal(await manual.isVisible(), false);
     await page.locator('[data-pane=entry]').click();
     assert.equal(await dayOne.inputValue(), '20');
-    await page.locator('#manual-ot button').click();
-    await page.locator('#commit-ot input').check();
-    await page.locator('#commit-ot button.primary').click();
+    await confirm.check();
+    assert.equal(await saveButton.isEnabled(), true);
+    await dayTwo.fill('4');
+    assert.equal(await confirm.isChecked(), false);
+    assert.equal(await saveButton.isDisabled(), true);
+    assert.equal(await summary.locator('tbody tr td').last().innerText(), '24');
+    await dayTwo.fill('5,0');
+    await confirm.check();
+    await unit.fill('Ban cũ giả lập đổi tên');
+    assert.equal(await confirm.isChecked(), false);
+    assert.match(await summary.innerText(), /Ban cũ giả lập đổi tên/);
+    await unit.fill('Ban cũ giả lập');
+    await confirm.check();
+    await saveButton.click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
     assert.equal(await dayTwo.inputValue(), '5');
     assert.equal(entries.find(row => row.project_id === 'pr-a').unit, 'Ban cũ giả lập');
+    assert.match(await manual.getByRole('checkbox').evaluate(input => input.parentElement.textContent), /thay thế/);
+    assert.equal(await saveButton.isDisabled(), true);
 
-    await page.getByText('Nhập từ Excel', { exact: true }).click();
     await fillPeriod(page, '#manual-scope', 'pr-b');
     assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
-    await fillPeriod(page, '#excel-ot', 'pr-b');
-    const workbook = binary(bookFrom([['Họ tên', 'Mã cán bộ', 'Đơn vị', 1, 2],
-      [account.full_name, '23', 'Ban mới giả lập', 12, 13], ['Người khác', '99', 'Đơn vị giả lập', 1, 1]]));
-    await page.locator('#excel-ot [name=file]').setInputFiles({
-      name: 'fixture.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbook
-    });
-    await page.locator('#excel-ot button').click();
-    await page.locator('#excel-mapping button').click();
+    await unit.fill('Ban mới giả lập');
+    await dayOne.fill('12');
+    await dayTwo.fill('13');
     await sleepUntilMessage(page, 'vượt hạn mức tháng 10 giờ');
-    assert.doesNotMatch(await page.locator('#commit-ot').innerText(), /Người khác|00000099/);
-    await page.locator('#commit-ot input').check();
-    await page.locator('#commit-ot button.primary').click();
+    await confirm.check();
+    await saveButton.click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
     await page.locator('[data-pane=report]').click();
     const report = '#report-form';
@@ -382,6 +398,23 @@ async function run() {
     const [backup] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     assert.match(backup.suggestedFilename(), /ot-supabase-backup/);
     assert.equal(await page.locator('#admin-project').count(), 0);
+    await operator.locator('#refresh-ot').click();
+    await sleepUntilMessage(operator, 'Đã tải dữ liệu mới nhất.');
+    await operator.locator('[data-pane=import]').click();
+    await fillPeriod(operator, '#excel-ot', 'pr-b');
+    const workbook = binary(bookFrom([['Họ tên', 'Mã cán bộ', 'Đơn vị', 1, 2],
+      [account.full_name, '23', 'Ban mới giả lập', 12, 13]]));
+    await operator.locator('#excel-ot [name=file]').setInputFiles({
+      name: 'fixture.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbook
+    });
+    await operator.locator('#excel-ot button').click();
+    await operator.locator('#excel-mapping button').click();
+    await operator.locator('#commit-ot input').check();
+    await operator.locator('#commit-ot button.primary').click();
+    await sleepUntilMessage(operator, 'Đã lưu OT cho 1 cán bộ.');
+    assert.ok(calls.some(call => call.actor === admin.id && call.endpoint.endsWith('/ot_submit_entries') &&
+      call.fields.p_batch === true && call.fields.p_project === 'pr-b' && call.fields.p_replace === true));
+
     await operator.locator('[data-pane=permissions]').click();
     const grantForm = operator.locator('#admin-project-role');
     await operator.getByRole('heading', { name: 'Cấp quyền quản trị dự án', exact: true }).waitFor();
@@ -443,7 +476,7 @@ async function run() {
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

@@ -1,6 +1,5 @@
 import { readExcel } from '../import/reader.mjs';
 import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, previewSheet } from '../import/engine.mjs';
-import { normalizeEmployeeCode } from './client.mjs';
 import { fromDatabase, periodKey, prepareRows } from './records.mjs';
 import { defaultDays, durationMinutes, durationValue, monthLegend, monthOptions, renderMonthGrid } from './month-grid.js?v=7';
 import { buildOTReport } from '../domain/reports.mjs';
@@ -25,26 +24,30 @@ export function renderUpload(state, profile) {
   </form><div id="workbook-mapping"></div>`;
   return `<section class="account-card">
     <h2>${admin ? 'Nhập OT từ Excel' : 'Nhập giờ OT trực tiếp'}</h2>
-    ${!admin ? `<form id="manual-scope">${periodFields(state, state.manualScope ?? state)}</form>
-      <div id="manual-sheet"></div>` : ''}
-    ${admin ? excel : `<details><summary>Nhập từ Excel</summary>${excel}</details>`}
-    <div id="upload-preview" aria-live="polite"></div>
+    ${admin ? excel + '<div id="upload-preview" aria-live="polite"></div>'
+      : `<form id="manual-scope">${periodFields(state, state.manualScope ?? state)}</form>
+        <div id="manual-sheet"></div>`}
   </section>`;
 }
 
-function dailyRecord(inputs, types, profile, { year, month }, unit) {
-  const days = inputs.flatMap((input, index) => {
-    const minutes = durationMinutes(input.value);
-    const day = index + 1;
-    if (minutes === null) throw Error('Ngày ' + day + ' cần số giờ từ 0 đến 24. Ví dụ 1,5 hoặc 1:30.');
-    return minutes ? [{ date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
-      type: types[index], minutes }] : [];
-  });
-  if (!days.length) throw Error('Nhập giờ OT cho ít nhất một ngày.');
+function dailyRecord(minutes, types, profile, { year, month }, unit) {
+  const days = minutes.flatMap((value, index) => value ? [{
+    date: year + '-' + String(month).padStart(2, '0') + '-' + String(index + 1).padStart(2, '0'),
+    type: types[index], minutes: value
+  }] : []);
   const ntMinutes = days.filter(day => day.type === 'NT').reduce((sum, day) => sum + day.minutes, 0);
   const nnMinutes = days.filter(day => day.type !== 'NT').reduce((sum, day) => sum + day.minutes, 0);
   return { employeeId: profile.employee_code, name: profile.full_name, unit, source: 'daily',
     days, ntMinutes, nnMinutes, totalMinutes: ntMinutes + nnMinutes };
+}
+
+function summaryMarkup(rows, alerts = []) {
+  return table(['Mã cán bộ', 'Họ tên', 'Đơn vị (Ban/TT)', 'NT (giờ)', 'NN gồm L (giờ)', 'OT (giờ)'],
+    rows.map(row => [row.employeeId, row.name, row.unit || '—',
+      row.ntMinutes === null || row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
+      row.nnMinutes === null || row.unclassifiedMinutes ? '—' : hours(row.nnMinutes),
+      row.totalMinutes === null ? '—' : hours(row.totalMinutes)])) +
+    (alerts.length ? '<ul>' + alerts.map(item => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '');
 }
 
 function mappingFields(sheet, mapping, dailyOnly) {
@@ -105,9 +108,8 @@ function renderMapping(target, book, onReview, { year, month, calendar, batch, l
 
 export function bindUpload(root, state, profile, { action, findPeriod, findCalendar, findLimits, api, alive, refresh, notice, uploadSignal }) {
   const preview = root.querySelector('#upload-preview');
-  if (!preview) return;
 
-  function context(fields, batch = false) {
+  function excelContext(fields) {
     const year = Number(fields.year);
     const month = Number(fields.month);
     const project = fields.project;
@@ -115,12 +117,10 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     if (!period?.is_open) throw Error('Kỳ chưa mở. Liên hệ quản trị viên để mở kỳ nhập.');
     const calendar = findCalendar(project, year, month);
     if (state.calendars !== null && !calendar) throw Error('Kỳ chưa có lịch làm việc. Liên hệ quản trị viên.');
-    return { year, month, project, period, batch, calendar, limits: findLimits(project, year, month) };
+    return { year, month, project, period, batch: true, calendar, limits: findLimits(project, year, month) };
   }
 
-  function showPreview(scope, source, warnings = [], onSaved) {
-    const records = scope.batch ? source : source.filter(record =>
-      /^[0-9]{1,8}$/.test(record.employeeId) && normalizeEmployeeCode(record.employeeId) === profile.employee_code);
+  function buildPreview(scope, records, warnings = []) {
     if (!records.length) throw Error('Không tìm thấy dòng OT cho phạm vi đã chọn.');
     const seenErrors = records.flatMap(record => record.errors ?? []);
     if (seenErrors.length) throw Error([...new Set(seenErrors)].slice(0, 10).join(' '));
@@ -148,34 +148,36 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         item.employeeId + ' vượt ' + (item.type === 'year' ? 'hạn mức năm' : 'hạn mức tháng') + ' ' + hours(item.excessMinutes) + ' giờ.'),
       ...report.dayWarnings.filter(item => included.has(item.employeeId)).map(item => item.employeeId + ' trùng ngày ' + item.date + '.')
     ];
+    return { rows, work, alerts, replace };
+  }
+
+  async function save(scope, rows, replace, onSaved) {
+    await api.rpc('ot_submit_entries', {
+      p_project: scope.project, p_year: scope.year, p_month: scope.month,
+      p_period_revision: scope.period.revision, p_data_revision: scope.period.data_revision,
+      p_replace: replace, p_batch: scope.batch, p_rows: rows
+    });
+    if (!alive()) return;
+    onSaved?.();
+    await refresh();
+    if (alive()) notice('Đã lưu OT cho ' + rows.length + ' cán bộ.');
+  }
+
+  function showExcelPreview(scope, records, warnings) {
+    const { rows, work, alerts, replace } = buildPreview(scope, records, warnings);
     const project = state.projects.find(item => item.id === scope.project);
     preview.innerHTML = `<form id="commit-ot">
       <h3>Xác nhận nhập OT · ${esc(project.code)} · ${scope.month}/${scope.year}</h3>
-      ${table(['Mã cán bộ', 'Họ tên trong nguồn', 'Đơn vị (Ban/TT)', 'NT (giờ)', 'NN gồm L (giờ)', 'OT (giờ)'],
-        work.map(row => [row.employeeId, row.name, row.unit, row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
-          row.unclassifiedMinutes ? '—' : hours(row.nnMinutes), hours(row.totalMinutes)]))}
-      ${alerts.length ? '<ul>' + alerts.map(item => '<li>' + esc(item) + '</li>').join('') + '</ul>' : ''}
-      <label><input type="checkbox" required> ${replace ? (scope.batch
+      ${summaryMarkup(work, alerts)}
+      <label><input type="checkbox" required> ${replace
         ? 'Tôi xác nhận thay thế toàn bộ dữ liệu hiện hành của dự án trong kỳ này, kể cả dòng vắng trong file.'
-        : 'Tôi xác nhận thay thế bản OT của mình trong kỳ này.')
         : 'Tôi xác nhận kỳ và dữ liệu sẽ lưu.'}</label>
       <div class="account-actions"><button class="primary">Xác nhận lưu OT</button><button type="button" id="cancel-ot">Hủy xem trước</button></div>
     </form>`;
     preview.querySelector('#cancel-ot').onclick = () => preview.replaceChildren();
     preview.querySelector('form').onsubmit = event => {
       event.preventDefault();
-      action(async () => {
-        await api.rpc('ot_submit_entries', {
-          p_project: scope.project, p_year: scope.year, p_month: scope.month,
-          p_period_revision: scope.period.revision, p_data_revision: scope.period.data_revision,
-          p_replace: replace, p_batch: scope.batch, p_rows: rows
-        });
-        if (!alive()) return;
-        onSaved?.();
-        preview.replaceChildren();
-        await refresh();
-        if (alive()) notice('Đã lưu OT cho ' + rows.length + ' cán bộ.');
-      });
+      action(() => save(scope, rows, replace, () => preview.replaceChildren()));
     };
   }
 
@@ -185,7 +187,6 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     const drafts = state.manualDrafts ??= new Map();
     function buildSheet(selection) {
       const { project, year, month } = selection;
-      preview.replaceChildren();
       if (!project) {
         sheet.innerHTML = '<p class="account-muted">Chọn dự án để hiện bảng ngày trong tháng.</p>';
         return;
@@ -195,6 +196,8 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       const types = saved ?? defaultDays(year, month);
       const limits = findLimits(project, year, month);
       const editable = Boolean(period?.is_open && saved);
+      const scope = { project, year, month, period, limits, batch: false };
+      const projectCode = state.projects.find(item => item.id === project)?.code;
       const current = state.entries.find(entry => entry.status === 'active' && entry.projectId === project &&
         entry.year === year && entry.month === month && entry.employeeId === profile.employee_code);
       const byDay = new Map(current?.days.map(day => [Number(day.date.slice(-2)), day.minutes]));
@@ -220,28 +223,52 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
               aria-label="Giờ OT ngày ${day}" value="${esc(draft?.values[day - 1] ?? (byDay.has(day) ? durationValue(byDay.get(day)) : ''))}">` }
           ]
         })}
-        <div class="account-actions month-actions"><output aria-live="polite" id="manual-total"></output>
-          <button class="primary" ${editable ? '' : 'disabled'}>Xem trước</button>
-        </div>
+        <div class="month-actions"><output aria-live="polite" id="manual-total"></output></div>
+        <section class="manual-review" aria-labelledby="manual-review-title">
+          <h3 id="manual-review-title">Dự kiến lưu OT · ${esc(projectCode)} · ${month}/${year}</h3>
+          <div id="manual-summary"></div>
+          <p class="account-muted" id="manual-unit-required" hidden>Điền đơn vị (Ban/TT) để xác nhận lưu.</p>
+          <label><input type="checkbox" name="confirmed" required disabled> ${current
+            ? 'Tôi xác nhận thay thế bản OT của mình trong kỳ này.'
+            : 'Tôi xác nhận kỳ và dữ liệu sẽ lưu.'}</label>
+          <button type="submit" class="primary" disabled>Xác nhận lưu OT</button>
+        </section>
       </form>`;
       const form = sheet.querySelector('form');
       const inputs = [...form.querySelectorAll('input[name=duration]')];
       function keepDraft() {
         drafts.set(key, { unit: form.elements.unit.value, values: inputs.map(input => input.value) });
       }
-      function updateTotal() {
+      const confirmed = form.elements.confirmed;
+      const saveButton = form.querySelector('button[type=submit]');
+      let prepared;
+      function updateDraft() {
+        confirmed.checked = false;
         const minutes = inputs.map(input => durationMinutes(input.value));
-        const invalidDay = minutes.findIndex((value, index) => value === null || (limits && value > limits[index]));
-        for (const [index, input] of inputs.entries()) {
-          if (minutes[index] === null || (limits && minutes[index] > limits[index])) input.setAttribute('aria-invalid', 'true');
+        const issues = minutes.map((value, index) => {
+          if (value === null) return 'Ngày ' + (index + 1) + ' cần số giờ từ 0 đến 24.';
+          if (limits && value > limits[index]) return 'Ngày ' + (index + 1) + ' vượt giới hạn ' + hours(limits[index]) + ' giờ OT.';
+          return '';
+        });
+        inputs.forEach((input, index) => {
+          if (issues[index]) input.setAttribute('aria-invalid', 'true');
           else input.removeAttribute('aria-invalid');
-        }
-        form.querySelector('#manual-total').textContent = invalidDay !== -1 ? 'Kiểm tra số giờ ngày ' + (invalidDay + 1)
-          : 'Tổng OT ' + hours(minutes.reduce((sum, item) => sum + item, 0)) + ' giờ';
-        preview.replaceChildren();
+        });
+        const error = issues.find(Boolean);
+        const unit = form.elements.unit.value.trim();
+        const record = dailyRecord(minutes, types, profile, selection, unit);
+        const canSave = editable && !error && Boolean(unit) && record.totalMinutes > 0;
+        prepared = canSave ? buildPreview(scope, [record]) : null;
+        const summary = error ? { ...record, ntMinutes: null, nnMinutes: null, totalMinutes: null } : record;
+        form.querySelector('#manual-summary').innerHTML = summaryMarkup([summary], prepared?.alerts);
+        form.querySelector('#manual-unit-required').hidden = !editable || Boolean(unit) || !record.totalMinutes;
+        form.querySelector('#manual-total').textContent = error || 'Tổng OT ' + hours(record.totalMinutes) + ' giờ';
+        confirmed.disabled = !canSave;
+        saveButton.disabled = true;
       }
-      updateTotal();
-      form.oninput = () => { keepDraft(); updateTotal(); };
+      updateDraft();
+      for (const input of [...inputs, form.elements.unit]) input.oninput = () => { keepDraft(); updateDraft(); };
+      confirmed.onchange = () => { saveButton.disabled = !prepared || !confirmed.checked; };
       form.onpaste = event => {
         const first = inputs.indexOf(event.target);
         const text = event.clipboardData?.getData('text/plain').replace(/\r?\n$/, '');
@@ -254,16 +281,20 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         }
         cells.forEach((value, offset) => { inputs[first + offset].value = value; });
         keepDraft();
-        updateTotal();
+        updateDraft();
       };
       form.onsubmit = event => {
         event.preventDefault();
-        if (!editable || !picker.reportValidity()) return;
-        action(() => {
-          const scope = context(selection);
-          const unit = form.elements.unit.value.trim();
-          if (!unit) throw Error('Nhập đơn vị (Ban/TT) của kỳ này.');
-          showPreview(scope, [dailyRecord(inputs, types, profile, scope, unit)], [], () => drafts.delete(key));
+        if (!prepared || !confirmed.checked || !picker.reportValidity()) return;
+        action(async () => {
+          const { rows, replace } = prepared;
+          const controls = [...picker.querySelectorAll('input, select'), ...inputs, form.elements.unit, confirmed];
+          controls.forEach(control => { control.disabled = true; });
+          try {
+            await save(scope, rows, replace, () => drafts.delete(key));
+          } finally {
+            controls.forEach(control => { control.disabled = false; });
+          }
         });
       };
     }
@@ -282,6 +313,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     picker.elements.year.oninput = selectPeriod;
     picker.onsubmit = event => event.preventDefault();
     selectPeriod();
+    return;
   }
   const excel = root.querySelector('#excel-ot');
   const mapping = root.querySelector('#workbook-mapping');
@@ -292,13 +324,13 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       preview.replaceChildren();
       mapping.replaceChildren();
       const fields = Object.fromEntries(new FormData(excel));
-      const scope = context(fields, state.role === 'system');
+      const scope = excelContext(fields);
       const book = await readExcel(fields.file, { signal: uploadSignal });
       if (!alive()) return;
       renderMapping(mapping, book, review => action(async () => {
         preview.replaceChildren();
         const { records, warnings } = review();
-        showPreview(scope, records, warnings);
+        showExcelPreview(scope, records, warnings);
       }), scope);
     });
   };
