@@ -29,3 +29,16 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 #register fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 #register #signup-otp { border-top: 1px solid #dce7e1; margin-top: .25rem; padding-top: .9rem; }
 #register .account-actions { margin-bottom: 0; }
+
+.calendar-months, .calendar-grid { display: grid; gap: .4rem; margin: 1rem 0; }
+.calendar-months { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
+.calendar-months small { display: block; }
+.calendar-grid { grid-template-columns: repeat(7, minmax(5.75rem, 1fr)); overflow-x: auto; }
+.calendar-grid > strong { text-align: center; }
+.calendar-grid .calendar-day { margin: 0; padding: .35rem; border: 1px solid #dce7e1; border-radius: .35rem; }
+.calendar-day[data-day-type="NN"] { background: #eff3fa; }
+.calendar-day[data-day-type="L"] { background: #fff2d9; }
+.calendar-year { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .75rem; }
+.calendar-year section { padding: .5rem; border: 1px solid #dce7e1; border-radius: .35rem; }
+.calendar-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .15rem; text-align: center; }
+.calendar-mini small { display: block; }

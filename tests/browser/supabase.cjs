@@ -18,7 +18,10 @@ const projects = [{ id: 'pr-a', code: 'A', name: 'Dự án giả lập A', statu
 const periods = projects.map(project => ({ project_id: project.id, year: 2026, month: 11,
   is_open: project.code === 'B', revision: 1, data_revision: 0 }));
 const entries = [];
-const projectAdmins = [];
+const projectAdmins = [{ project_id: 'pr-a', user_id: admin.id, active: true }];
+const memberships = [{ project_id: 'pr-b', user_id: account.id, active: true },
+  { project_id: 'pr-b', user_id: admin.id, active: true }];
+const calendars = [{ project_id: 'pr-b', year: 2026, month: 11, days: Array(30).fill('NT') }];
 const calls = [];
 let networkError = false;
 let duplicate = false;
@@ -31,7 +34,7 @@ async function routeRequest(route) {
   const fields = req.postDataJSON();
   const token = req.headers().authorization?.slice('Bearer '.length);
   const actor = [account, admin, missing].find(user => token === 'fixture-session-' + user.id);
-  calls.push({ endpoint, fields, actor: actor?.id });
+  calls.push({ endpoint, fields, actor: actor?.id, userFilter: url.searchParams.get('user_id') });
   const send = (value, status = 200) => route.fulfill({ status, json: value,
     headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
       'sb-request-id': 'fixture-request-id' } });
@@ -50,10 +53,16 @@ async function routeRequest(route) {
     const id = url.searchParams.get('id');
     return send(id ? [account, admin].filter(user => id === 'eq.' + user.id) : [account, admin]);
   }
-  if (endpoint.endsWith('/ot_projects')) return send(projects);
-  if (endpoint.endsWith('/ot_periods')) return send(periods);
-  if (endpoint.endsWith('/ot_entries')) return send(entries.filter(row => actor === admin || row.user_id === actor.id));
-  if (endpoint.endsWith('/ot_project_members') || endpoint.endsWith('/ot_audit_events')) return send([]);
+  const inScope = (field, value) => {
+    const filter = url.searchParams.get(field);
+    return !filter || (filter.startsWith('in.(') ? filter.slice(4, -1).split(',').includes(value) : filter === 'eq.' + value);
+  };
+  if (endpoint.endsWith('/ot_projects')) return send(projects.filter(row => inScope('id', row.id)));
+  if (endpoint.endsWith('/ot_periods')) return send(periods.filter(row => inScope('project_id', row.project_id)));
+  if (endpoint.endsWith('/ot_period_calendars')) return send(calendars.filter(row => inScope('project_id', row.project_id)));
+  if (endpoint.endsWith('/ot_entries')) return send(entries.filter(row => inScope('project_id', row.project_id) && inScope('user_id', row.user_id)));
+  if (endpoint.endsWith('/ot_project_members')) return send(memberships.filter(row => inScope('user_id', row.user_id)));
+  if (endpoint.endsWith('/ot_audit_events')) return send([]);
   if (endpoint.endsWith('/ot_review_profile')) {
     assert.equal(actor, admin);
     Object.assign(account, { status: 'active', employee_code: fields.p_employee_code });
@@ -61,10 +70,11 @@ async function routeRequest(route) {
   }
   if (endpoint.endsWith('/ot_set_member')) {
     assert.equal(actor, admin);
+    memberships.push({ project_id: fields.p_project, user_id: fields.p_user, active: fields.p_active });
     return send(null);
   }
   if (endpoint.endsWith('/ot_project_admins')) {
-    return send(projectAdmins.filter(grant => actor === admin || (grant.user_id === actor.id && grant.active)));
+    return send(projectAdmins.filter(grant => (actor === admin || (grant.user_id === actor.id && grant.active)) && inScope('user_id', grant.user_id)));
   }
   if (endpoint.endsWith('/ot_set_project_admin')) {
     assert.equal(actor, admin);
@@ -72,6 +82,14 @@ async function routeRequest(route) {
     if (existing) existing.active = fields.p_active;
     else projectAdmins.push({ project_id: fields.p_project, user_id: fields.p_user, active: fields.p_active });
     return send(null);
+  }
+  if (endpoint.endsWith('/ot_set_calendar')) {
+    assert.equal(actor, admin);
+    const period = periods.find(row => row.project_id === fields.p_project);
+    assert.equal(fields.p_expected_revision, period.revision);
+    assert.equal(period.is_open, false);
+    calendars.push({ project_id: fields.p_project, year: fields.p_year, month: fields.p_month, days: fields.p_days });
+    return send(++period.revision);
   }
   if (endpoint.endsWith('/ot_set_period')) {
     assert.ok(actor === admin || projectAdmins.some(grant => grant.active &&
@@ -87,6 +105,10 @@ async function routeRequest(route) {
     assert.equal(fields.p_data_revision, period.data_revision);
     assert.equal(fields.p_batch, false);
     assert.ok(period.is_open);
+    const calendar = calendars.find(item => item.project_id === fields.p_project);
+    for (const row of fields.p_rows) for (const day of row.days) {
+      assert.equal(day.type, calendar.days[Number(day.date.slice(-2)) - 1]);
+    }
     if (fields.p_replace) for (const row of entries) {
       if (row.project_id === fields.p_project && row.user_id === actor.id) row.active = false;
     }
@@ -220,6 +242,19 @@ async function run() {
     const operator = await context.newPage();
     await operator.goto(base + '/kiem-tra-tai-khoan.html');
     await login(operator, admin);
+    await operator.getByRole('heading', { name: 'Chọn vai trò làm việc' }).waitFor();
+    assert.equal(await operator.locator('[data-role]').count(), 3);
+    await operator.locator('[data-role=member]').click();
+    await operator.locator('#manual-ot').waitFor({state: 'attached'});
+    assert.equal(await operator.locator('#admin-profile').count(), 0);
+    assert.deepEqual(await operator.locator('#manual-ot [name=project] option').evaluateAll(items =>
+      items.map(item => item.value)), ['', 'pr-b']);
+    assert.ok(calls.some(call => call.actor === admin.id && call.endpoint.endsWith('/ot_entries') &&
+      call.userFilter === 'eq.' + admin.id));
+    await operator.locator('[data-role=project]').click();
+    await operator.getByRole('heading', { name: 'Quản lý kỳ của dự án' }).waitFor();
+    assert.equal(await operator.locator('#manual-ot').count(), 0);
+    await operator.locator('[data-role=system]').click();
     await operator.getByText('Duyệt tài khoản', { exact: true }).click();
     await operator.locator('#admin-profile [name=user]').selectOption(account.id);
     await operator.locator('#admin-profile button').click();
@@ -233,9 +268,21 @@ async function run() {
     await login(page, account);
     await page.getByText('Nhập theo ngày', { exact: true }).click();
     await fillPeriod(page, '#manual-ot', 'pr-a');
-    await page.locator('#manual-ot [name=days]').fill('1 NT 1200\n2 L 300');
+    await page.locator('#manual-ot [name=days]').fill('1 1200\n2 300');
     await page.locator('#manual-ot button').click();
     await sleepUntilMessage(page, 'Kỳ chưa mở');
+    await operator.locator('#calendar-scope [name=project]').selectOption('pr-a');
+    await operator.locator('#calendar-scope [name=year]').fill('2026');
+    await operator.getByRole('button', { name: 'Xem lịch năm' }).click();
+    await operator.locator('[data-calendar-month="11"]').click();
+    await operator.getByText('Xem đủ 12 tháng', { exact: true }).click();
+    assert.equal(await operator.locator('.calendar-year section:visible').count(), 12);
+    assert.equal(await operator.locator('#calendar-days select').count(), 30);
+    assert.equal(await operator.getByLabel('Ngày 1', { exact: true }).inputValue(), 'NN');
+    await operator.getByLabel('Ngày 1', { exact: true }).selectOption('NT');
+    await operator.getByLabel('Ngày 2', { exact: true }).selectOption('L');
+    await operator.getByRole('button', { name: 'Lưu lịch tháng' }).click();
+    await sleepUntilMessage(operator, 'Đã lưu lịch làm việc tháng 11/2026.');
     await operator.getByText('Mở và khóa kỳ nhập OT', { exact: true }).click();
     await fillPeriod(operator, '#admin-period', 'pr-a');
     await operator.locator('#admin-period button').click();
@@ -243,7 +290,7 @@ async function run() {
     await page.locator('#refresh-ot').click();
     await sleepUntilMessage(page, 'Đã tải dữ liệu mới nhất.');
     await fillPeriod(page, '#manual-ot', 'pr-a');
-    await page.locator('#manual-ot [name=days]').fill('1 NT 1200\n2 L 300');
+    await page.locator('#manual-ot [name=days]').fill('1 1200\n2 300');
     await page.locator('#manual-ot button').click();
     await page.locator('#commit-ot input').check();
     await page.locator('#commit-ot button.primary').click();
@@ -251,8 +298,8 @@ async function run() {
 
     await page.getByText('Nhập từ Excel', { exact: true }).click();
     await fillPeriod(page, '#excel-ot', 'pr-b');
-    const workbook = binary(bookFrom([['Họ tên', 'Mã cán bộ', 'Đơn vị', 'Giờ NT', 'Giờ NN', 'Tổng giờ'],
-      [account.full_name, '23', 'Đơn vị giả lập', 25, 0, 25], ['Người khác', '99', 'Đơn vị giả lập', 1, 1, 2]]));
+    const workbook = binary(bookFrom([['Họ tên', 'Mã cán bộ', 'Đơn vị', 1, 2],
+      [account.full_name, '23', 'Đơn vị giả lập', 12, 13], ['Người khác', '99', 'Đơn vị giả lập', 1, 1]]));
     await page.locator('#excel-ot [name=file]').setInputFiles({
       name: 'fixture.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbook
     });
@@ -283,7 +330,8 @@ async function run() {
     await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
 
     await page.locator('#refresh-ot').click();
-    await page.getByRole('heading', { name: 'Quản trị dự án', exact: true }).waitFor();
+    await page.locator('[data-role=project]').click();
+    await page.getByRole('heading', { name: 'Quản lý kỳ của dự án', exact: true }).waitFor();
     await page.getByText('Mở và khóa kỳ nhập OT', { exact: true }).click();
     assert.deepEqual(await page.locator('#admin-period [name=project] option').evaluateAll(items =>
       items.map(item => item.value)), ['', 'pr-a']);
@@ -300,14 +348,14 @@ async function run() {
     await grantForm.getByRole('button').click();
     await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
     await page.locator('#refresh-ot').click();
-    await page.getByRole('heading', { name: 'Quản trị dự án', exact: true }).waitFor({ state: 'detached' });
+    await page.locator('[data-role=project]').waitFor({ state: 'detached' });
 
     await page.locator('#logout').click();
     await sleepUntilMessage(page, 'Đã đăng xuất');
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, system and project admin, locked period, manual and Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, calendar and locked period, manual and Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

@@ -34,6 +34,11 @@ const errorMessages = {
   OT_MISSING: 'Không có dữ liệu hiện hành để thay thế.',
   OT_EMPLOYEE: 'Có mã cán bộ chưa được duyệt hoặc chưa được phân công vào dự án.',
   OT_INVALID: 'Dữ liệu giờ, mã cán bộ hoặc kỳ nhập không hợp lệ.',
+  OT_CALENDAR_REQUIRED: 'Hãy lưu lịch làm việc của tháng trước khi mở hoặc nhập kỳ OT.',
+  OT_CALENDAR_INVALID: 'Lịch cần có đủ các ngày trong tháng và loại ngày hợp lệ.',
+  OT_CALENDAR_OPEN: 'Hãy khóa kỳ trước khi sửa lịch.',
+  OT_DAY_TYPE: 'Loại ngày OT không khớp lịch đã lưu. Vui lòng tải lại và xem trước lại.',
+  OT_DAILY_REQUIRED: 'Kỳ này yêu cầu số giờ chi tiết theo từng ngày.',
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
 };
 

@@ -15,21 +15,24 @@ export function periodFields(state, { all = false } = {}) {
 }
 
 export function renderUpload(state, profile) {
-  const admin = profile.role === 'admin';
+  const admin = state.role === 'system';
+  const configured = state.calendars !== null;
   if (!admin && !profile.employee_code) return '';
   return `<section class="account-card">
     <h2>Nhập OT</h2>
     <p>Chọn dự án và kỳ đang mở. Giờ được lưu sau khi xem trước và xác nhận.</p>
-    ${profile.employee_code ? `<details><summary>Nhập theo ngày</summary>
+    ${!admin && profile.employee_code ? `<details><summary>Nhập theo ngày</summary>
       <form id="manual-ot">${periodFields(state)}
-        <label>Ngày, loại và số phút OT<textarea name="days" required maxlength="2000" placeholder="1 NT 120"></textarea></label>
-        <p class="account-muted">Mỗi dòng gồm ngày trong tháng, loại NT/NN/L và số phút, ví dụ 1 NT 120.</p>
+        <label>${configured ? 'Ngày và số phút OT' : 'Ngày, loại và số phút OT'}<textarea name="days" required maxlength="2000"
+          placeholder="${configured ? '1 120' : '1 NT 120'}"></textarea></label>
+        <p class="account-muted">${configured ? 'Mỗi dòng gồm ngày trong tháng và số phút, ví dụ 1 120. Loại ngày lấy từ lịch đã lưu.'
+          : 'Mỗi dòng gồm ngày trong tháng, loại NT/NN/L và số phút, ví dụ 1 NT 120.'}</p>
         <button class="primary">Xem trước giờ nhập</button>
       </form>
     </details>` : ''}
     <details><summary>Nhập từ Excel</summary>
       <form id="excel-ot">${periodFields(state)}
-        ${admin ? '<label><input type="checkbox" name="batch" checked> Nhập toàn bộ kỳ cho người được phân công</label>' : ''}
+        ${admin ? '<p>Nhập toàn bộ kỳ cho người được phân công.</p>' : ''}
         <label>File Excel<input name="file" type="file" accept=".xlsx,.xls" required></label>
         <button class="primary">Đọc file và kiểm tra ánh xạ</button>
       </form>
@@ -39,14 +42,17 @@ export function renderUpload(state, profile) {
   </section>`;
 }
 
-export function readManual(text, profile, year, month) {
+export function readManual(text, profile, year, month, calendar) {
   const days = text.trim().split(/\r?\n/).filter(line => line.trim()).map(line => {
-    const match = line.trim().match(/^(\d{1,2})\s+(NT|NN|L)\s+(\d{1,4})$/i);
-    if (!match) throw Error('Mỗi dòng cần có ngày, loại NT/NN/L và số phút.');
+    const match = line.trim().match(/^(\d{1,2})(?:\s+(NT|NN|L))?\s+(\d{1,4})$/i);
+    if (!match || (!calendar && !match[2])) throw Error(calendar
+      ? 'Mỗi dòng cần có ngày và số phút.' : 'Mỗi dòng cần có ngày, loại NT/NN/L và số phút.');
     const [, day, type, minutes] = match;
+    const dayType = calendar ? calendar[Number(day) - 1] : type.toUpperCase();
+    if (!dayType) throw Error('Ngày ' + day + ' không thuộc lịch của tháng đã chọn.');
     return {
       date: year + '-' + String(month).padStart(2, '0') + '-' + day.padStart(2, '0'),
-      type: type.toUpperCase(), minutes: Number(minutes)
+      type: dayType, minutes: Number(minutes)
     };
   });
   if (!days.length) throw Error('Vui lòng nhập ít nhất một ngày OT.');
@@ -56,7 +62,7 @@ export function readManual(text, profile, year, month) {
     days, ntMinutes, nnMinutes, totalMinutes: ntMinutes + nnMinutes };
 }
 
-function mappingFields(sheet, mapping) {
+function mappingFields(sheet, mapping, dailyOnly) {
   return `<div class="account-grid">
     ${Object.entries(FIELD_LABELS).map(([key, label]) => `<label>${esc(label)}<select name="col-${key}">
       ${option('', 'Không ánh xạ')}${Array.from({ length: sheet.columns }, (_, i) =>
@@ -64,12 +70,14 @@ function mappingFields(sheet, mapping) {
     </select></label>`).join('')}
     <label>Dòng bắt đầu<input type="number" name="start" min="1" max="${sheet.rows.length}" value="${mapping.startRow + 1}" required></label>
     <label>Dòng kết thúc<input type="number" name="end" min="1" max="${sheet.rows.length}" value="${mapping.endRow + 1}" required></label>
-    <label>Nguồn tính<select name="source">${option('auto', 'Tự động', mapping.source)}${option('daily', 'Theo ngày', mapping.source)}${option('summary', 'Tổng hợp', mapping.source)}</select></label>
+    ${dailyOnly ? '<p>Nguồn tính theo từng ngày trong lịch dự án.</p>' :
+      `<label>Nguồn tính<select name="source">${option('auto', 'Tự động', mapping.source)}${option('daily', 'Theo ngày', mapping.source)}${option('summary', 'Tổng hợp', mapping.source)}</select></label>`}
     <label>Đơn vị số<select name="unit">${option('hours', 'Giờ thập phân', mapping.unit)}${option('duration', 'Thời lượng Excel', mapping.unit)}</select></label>
   </div>`;
 }
 
-function renderMapping(target, book, onReview, year, month) {
+function renderMapping(target, book, onReview, { year, month, calendar, batch }) {
+  const dailyOnly = Boolean(calendar && !batch);
   target.innerHTML = `<form id="excel-mapping">
     <label>Sheet<select name="sheet">${book.sheets.map((sheet, index) => option(index, sheet.name)).join('')}</select></label>
     <div id="mapping-hint"></div><div id="mapping-fields"></div>
@@ -84,7 +92,7 @@ function renderMapping(target, book, onReview, year, month) {
     detected = detectPeriod(sheet, mapping.headerRow, book.filename);
     target.querySelector('#mapping-hint').textContent = 'Kỳ sẽ lưu: ' + month + '/' + year +
       '. Đã nhận diện ' + mapping.days.length + ' cột ngày. Hãy kiểm tra ánh xạ.';
-    target.querySelector('#mapping-fields').innerHTML = mappingFields(sheet, mapping);
+    target.querySelector('#mapping-fields').innerHTML = mappingFields(sheet, mapping, dailyOnly);
   }
   form.elements.sheet.onchange = detect;
   detect();
@@ -95,10 +103,13 @@ function renderMapping(target, book, onReview, year, month) {
       const sheet = book.sheets[Number(fields.get('sheet'))];
       const columns = Object.fromEntries(Object.keys(FIELD_LABELS).filter(key => fields.get('col-' + key) !== '')
         .map(key => [key, Number(fields.get('col-' + key))]));
-      const result = previewSheet(sheet, { ...mapping, columns, unit: fields.get('unit'), source: fields.get('source'),
+      if (dailyOnly && !mapping.days.length) throw Error('Excel cần có cột ghi số giờ của từng ngày.');
+      const days = calendar ? mapping.days.map(day => ({ ...day, type: calendar[day.day - 1] ?? '' })) : mapping.days;
+      const source = dailyOnly ? 'daily' : fields.get('source');
+      const result = previewSheet(sheet, { ...mapping, columns, days, unit: fields.get('unit'), source,
         startRow: Number(fields.get('start')) - 1, endRow: Number(fields.get('end')) - 1 }, { year, month });
       if (result.errors.length) throw Error(result.errors.join(' '));
-      const warnings = [];
+      const warnings = calendar && result.source === 'daily' ? ['Loại ngày trong Excel được lấy theo lịch đã lưu của dự án.'] : [];
       if (detected.conflict || (detected.year && detected.year !== year) || (detected.month && detected.month !== month)) {
         warnings.push('Kỳ nhận diện trong file khác hoặc mâu thuẫn. Dữ liệu sẽ lưu theo kỳ đã chọn.');
       }
@@ -107,7 +118,7 @@ function renderMapping(target, book, onReview, year, month) {
   };
 }
 
-export function bindUpload(root, state, profile, { action, findPeriod, api, alive, refresh, notice, uploadSignal }) {
+export function bindUpload(root, state, profile, { action, findPeriod, findCalendar, api, alive, refresh, notice, uploadSignal }) {
   const preview = root.querySelector('#upload-preview');
   if (!preview) return;
 
@@ -117,7 +128,9 @@ export function bindUpload(root, state, profile, { action, findPeriod, api, aliv
     const project = fields.project;
     const period = findPeriod(project, year, month);
     if (!period?.is_open) throw Error('Kỳ chưa mở. Liên hệ quản trị viên để mở kỳ nhập.');
-    return { year, month, project, period, batch };
+    const calendar = findCalendar(project, year, month);
+    if (state.calendars !== null && !calendar) throw Error('Kỳ chưa có lịch làm việc. Liên hệ quản trị viên.');
+    return { year, month, project, period, batch, calendar };
   }
 
   function showPreview(scope, source, warnings = []) {
@@ -179,7 +192,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, api, aliv
       preview.replaceChildren();
       const fields = Object.fromEntries(new FormData(manual));
       const scope = context(fields);
-      showPreview(scope, [readManual(fields.days, profile, scope.year, scope.month)]);
+      showPreview(scope, [readManual(fields.days, profile, scope.year, scope.month, scope.calendar)]);
     });
   };
   const excel = root.querySelector('#excel-ot');
@@ -191,14 +204,14 @@ export function bindUpload(root, state, profile, { action, findPeriod, api, aliv
       preview.replaceChildren();
       mapping.replaceChildren();
       const fields = Object.fromEntries(new FormData(excel));
-      const scope = context(fields, profile.role === 'admin' && fields.batch === 'on');
+      const scope = context(fields, state.role === 'system');
       const book = await readExcel(fields.file, { signal: uploadSignal });
       if (!alive()) return;
       renderMapping(mapping, book, review => action(async () => {
         preview.replaceChildren();
         const { records, warnings } = review();
         showPreview(scope, records, warnings);
-      }), scope.year, scope.month);
+      }), scope);
     });
   };
 }

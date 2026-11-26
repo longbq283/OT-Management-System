@@ -5,13 +5,13 @@ export function renderAdmin(state) {
   const projects = projectOptions(state.projects);
   const people = state.profiles.filter(profile => profile.role === 'user');
   const accounts = people.map(profile => option(profile.id, profile.full_name + ' · ' + profile.email)).join('');
-  const assignable = people.filter(profile => profile.employee_code)
+  const assignable = state.profiles.filter(profile => profile.employee_code)
     .map(profile => option(profile.id, profile.employee_code + ' · ' + profile.full_name)).join('');
   const profileName = id => state.profiles.find(profile => profile.id === id)?.full_name || id;
   const projectName = id => state.projects.find(project => project.id === id)?.code || id;
   const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Vô hiệu hóa' };
   const actions = { profile_review: 'Duyệt tài khoản', project_saved: 'Lưu dự án',
-    membership_changed: 'Phân công', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
+    membership_changed: 'Phân công', period_calendar_saved: 'Lưu lịch tháng', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
     entries_submitted: 'Nhập OT', entries_replaced: 'Thay thế OT' };
   return `<section class="account-card">
     <h2>Quản trị hệ thống</h2>
