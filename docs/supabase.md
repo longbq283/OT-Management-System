@@ -25,7 +25,7 @@ Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng t
 
 ## Quyền và nghiệp vụ
 
-- Hồ sơ chờ duyệt hoặc bị vô hiệu hóa chỉ đọc được hồ sơ của mình. Người dùng hoạt động đọc OT của chính mình trong các dự án được phân công. Quản trị hệ thống quản lý danh mục, duyệt tài khoản, phân công, kỳ nhập và nhật ký. Mục **Phân quyền dự án** cho phép cấp hoặc thu hồi quyền theo từng dự án sau khi hồ sơ đã được duyệt. Quản trị dự án xem báo cáo và mở/khóa kỳ trong các dự án được giao. Việc duyệt tài khoản, cấp quyền và nhập thay cả kỳ vẫn thuộc quản trị hệ thống. Các bảng cho tài khoản ứng dụng quyền đọc theo RLS. Thao tác ghi đi qua RPC.
+- Hồ sơ chờ duyệt hoặc bị vô hiệu hóa chỉ đọc được hồ sơ của mình. Người dùng hoạt động đọc OT của chính mình trong các dự án được phân công. Quản trị hệ thống quản lý danh mục, duyệt tài khoản, phân công, kỳ nhập và nhật ký. Mục **Phân quyền quản trị dự án** cho phép cấp hoặc thu hồi quyền theo từng dự án sau khi hồ sơ đã được duyệt. Quản trị dự án xem báo cáo và mở/khóa kỳ trong các dự án được giao. Việc duyệt tài khoản, cấp quyền và nhập thay cả kỳ vẫn thuộc quản trị hệ thống. Các bảng cho tài khoản ứng dụng quyền đọc theo RLS. Thao tác ghi đi qua RPC.
 - Người dùng nhập theo ngày hoặc đọc dòng khớp mã cán bộ trong Excel. Admin có thể nhập một lô cho cả dự án/kỳ. Hệ thống kiểm tra quyền sở hữu, phân công, trạng thái dự án/kỳ và hai phiên bản ngay trong transaction.
 - Mỗi cán bộ chỉ có một phiên bản hiệu lực cho một dự án/kỳ. Người dùng chỉ thay thế phiên bản của mình. Khi admin chọn thay thế cả kỳ, các bản hiện hành của kỳ được lưu vào lịch sử, gồm cả người vắng mặt trong file mới. Xem trước và xác nhận trước khi lưu.
 - NN bao gồm L. Khi có dữ liệu ngày, database tính lại NT/NN từ chi tiết. Các báo cáo tái sử dụng bộ tính hạn mức 40 giờ/tháng và 200 giờ/năm, không chặn vì vượt hạn mức. Lọc dự án chỉ lọc phần hiển thị. Hạn mức và cảnh báo trùng ngày dùng toàn bộ dữ liệu tài khoản có quyền đọc.
@@ -33,8 +33,8 @@ Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng t
 
 ## Quản lý người dùng
 
-- **Quản trị hệ thống → Quản lý người dùng** hiển thị hồ sơ và trạng thái. Chọn **Thêm người dùng** để lưu email BIDV, tên và mã cán bộ trước. Người dùng tự đăng ký và xác minh OTP trên website, rồi hồ sơ đăng ký trước được kích hoạt ở lần đăng nhập hoặc tải lại hồ sơ. Người tự đăng ký ngoài danh sách vẫn chờ duyệt.
-- Dùng **Chỉnh sửa và duyệt tài khoản** để sửa họ tên, duyệt hoặc khóa quyền truy cập. Mã cán bộ có thể sửa trước khi có lịch sử OT. Khóa tài khoản lưu lại lịch sử và có thể kích hoạt lại. **Phân công dự án** thêm hoặc gỡ thành viên, còn **Phân quyền dự án** cấp hoặc thu hồi quyền quản trị.
+- **Quản trị hệ thống → Quản lý → Quản lý người dùng** hiển thị hồ sơ và trạng thái. Chọn **Thêm người dùng** để lưu email BIDV, tên và mã cán bộ trước. Người dùng tự đăng ký và xác minh OTP trên website, rồi hồ sơ đăng ký trước được kích hoạt ở lần đăng nhập hoặc tải lại hồ sơ. Người tự đăng ký ngoài danh sách vẫn chờ duyệt.
+- Dùng **Chỉnh sửa và duyệt tài khoản** để sửa họ tên, duyệt hoặc khóa quyền truy cập. Mã cán bộ có thể sửa trước khi có lịch sử OT. Khóa tài khoản lưu lại lịch sử và có thể kích hoạt lại. **Phân công dự án** thêm hoặc gỡ thành viên, còn **Phân quyền quản trị dự án** cấp hoặc thu hồi quyền quản trị.
 - **Quản trị dự án → Thành viên dự án** liệt kê thành viên trong dự án được quản lý. Thêm theo mã cán bộ đã kích hoạt hoặc chọn một thành viên để gỡ khỏi dự án. Việc gỡ thành viên giữ lại các bản ghi OT đã lưu.
 
 ## Chọn vai trò và lịch làm việc

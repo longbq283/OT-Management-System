@@ -1,4 +1,4 @@
-import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=10';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=11';
 import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js';
 import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
 import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
@@ -87,7 +87,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       root.innerHTML = `<section class="account-card"><h2>Chọn vai trò làm việc</h2>
         <div class="workspace-role-options">${state.roles.map(role => `<button type="button" data-role="${role}">
           <strong>${roleNames[role]}</strong><span>${roleActions[role]}</span></button>`).join('')}</div>
-        ${state.roles.includes('project') ? '' : '<p>' + noProjectRole + '. Quản trị hệ thống có thể cấp tại mục Phân quyền dự án.</p>'}
+        ${state.roles.includes('project') ? '' : '<p>' + noProjectRole + '. Quản trị hệ thống có thể cấp tại Quản lý → Phân quyền quản trị dự án.</p>'}
         <button type="button" id="refresh-ot">Tải lại quyền</button>
       </section>`;
       bindNavigation();
@@ -102,9 +102,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       ...(member ? [['entry', 'Nhập OT', upload ? renderUpload(state, profile)
         : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa có dự án được phân công. Quản trị hệ thống cần thêm bạn vào danh sách thành viên của dự án.</p></section>']] : []),
       ['report', 'Báo cáo', renderReport(state, getReport(state))],
-      ...(central ? [['management', 'Quản lý', renderAdmin(state)],
-        ['users', 'Quản lý người dùng', renderUsers(state)],
-        ['permissions', 'Phân quyền dự án', renderProjectPermissions(state)],
+      ...(central ? [['management', 'Quản lý', renderAdmin(state) + renderUsers(state) + renderProjectPermissions(state)],
         ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
       ...(state.role === 'project' ? [['members', 'Thành viên dự án', renderProjectMembers(state)]] : []),
       ['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>

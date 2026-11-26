@@ -7,7 +7,7 @@ export function renderAdmin(state) {
     membership_changed: 'Phân công', period_calendar_saved: 'Lưu lịch tháng', period_limits_saved: 'Lưu giới hạn theo ngày', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
     entries_submitted: 'Nhập OT', entries_replaced: 'Thay thế OT' };
   return `<section class="account-card">
-    <h2>Quản trị hệ thống</h2>
+    <h2>Dự án và nhật ký</h2>
     <details><summary>Dự án</summary>
       <form id="admin-project">
         <div class="account-grid">
@@ -36,7 +36,7 @@ export function renderProjectPermissions(state) {
   const profileName = id => state.profiles.find(profile => profile.id === id)?.full_name || id;
   const projectName = id => state.projects.find(project => project.id === id)?.code || id;
   return `<section class="account-card">
-    <h2>Cấp quyền quản trị dự án</h2>
+    <h2>Phân quyền quản trị dự án</h2>
       ${state.projectAdmins === null ? '<p>Áp dụng migration quản trị dự án trong Supabase để dùng chức năng này.</p>' : `
         <p class="account-muted">Duyệt tài khoản trước khi cấp quyền. Người được cấp quyền chọn Quản trị dự án sau khi đăng nhập để tự sửa lịch và mở hoặc khóa kỳ.</p>
         ${table(['Dự án', 'Cán bộ', 'Quyền'], state.projectAdmins.map(grant => [

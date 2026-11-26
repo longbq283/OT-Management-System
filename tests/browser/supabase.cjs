@@ -293,8 +293,11 @@ async function run() {
     await operator.locator('[data-role=system]').click();
     await operator.locator('[data-pane=import]').click();
     await operator.locator('#excel-ot').waitFor();
-    await operator.locator('[data-pane=users]').click();
+    await operator.locator('[data-pane=management]').click();
     await operator.getByRole('heading', { name: 'Quản lý người dùng', exact: true }).waitFor();
+    assert.deepEqual(await operator.locator('#pane-management > section > h2').allTextContents(),
+      ['Dự án và nhật ký', 'Quản lý người dùng', 'Phân quyền quản trị dự án']);
+    assert.equal(await operator.locator('[data-pane=users], [data-pane=permissions]').count(), 0);
     await operator.locator('#admin-profile [name=user]').selectOption(account.id);
     await operator.getByRole('button', { name: 'Lưu và kích hoạt', exact: true }).click();
     await sleepUntilMessage(operator, 'Đã cập nhật duyệt tài khoản.');
@@ -464,9 +467,9 @@ async function run() {
     assert.ok(calls.some(call => call.actor === admin.id && call.endpoint.endsWith('/ot_submit_entries') &&
       call.fields.p_batch === true && call.fields.p_project === 'pr-b' && call.fields.p_replace === true));
 
-    await operator.locator('[data-pane=permissions]').click();
+    await operator.locator('[data-pane=management]').click();
     const grantForm = operator.locator('#admin-project-role');
-    await operator.getByRole('heading', { name: 'Cấp quyền quản trị dự án', exact: true }).waitFor();
+    await operator.getByRole('heading', { name: 'Phân quyền quản trị dự án', exact: true }).waitFor();
     await grantForm.locator('[name=project]').selectOption('pr-a');
     await grantForm.locator('[name=user]').selectOption(account.id);
     await grantForm.getByRole('button').click();
