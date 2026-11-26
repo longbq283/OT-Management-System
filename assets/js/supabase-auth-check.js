@@ -1,5 +1,5 @@
 import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=2';
-import { mountWorkspace } from '../../src/supabase/workspace.js';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=3';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');
@@ -90,7 +90,7 @@ async function showProfile() {
     return;
   }
   text.textContent = [profile.full_name, profile.email, profile.employee_code || profile.requested_employee_code,
-    profile.role === 'admin' ? 'Quản trị viên' : 'Người dùng', statuses[profile.status]].filter(Boolean).join(' · ');
+    profile.role === 'admin' ? 'Quản trị hệ thống' : 'Người dùng', statuses[profile.status]].filter(Boolean).join(' · ');
   if (profile.status === 'active') {
     const mounted = mountWorkspace(workspace, { api, profile, notice, expire });
     closeWorkspace = mounted.close;

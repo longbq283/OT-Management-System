@@ -18,6 +18,7 @@ const projects = [{ id: 'pr-a', code: 'A', name: 'Dự án giả lập A', statu
 const periods = projects.map(project => ({ project_id: project.id, year: 2026, month: 11,
   is_open: project.code === 'B', revision: 1, data_revision: 0 }));
 const entries = [];
+const projectAdmins = [];
 const calls = [];
 let networkError = false;
 let duplicate = false;
@@ -62,8 +63,19 @@ async function routeRequest(route) {
     assert.equal(actor, admin);
     return send(null);
   }
-  if (endpoint.endsWith('/ot_set_period')) {
+  if (endpoint.endsWith('/ot_project_admins')) {
+    return send(projectAdmins.filter(grant => actor === admin || (grant.user_id === actor.id && grant.active)));
+  }
+  if (endpoint.endsWith('/ot_set_project_admin')) {
     assert.equal(actor, admin);
+    const existing = projectAdmins.find(grant => grant.project_id === fields.p_project && grant.user_id === fields.p_user);
+    if (existing) existing.active = fields.p_active;
+    else projectAdmins.push({ project_id: fields.p_project, user_id: fields.p_user, active: fields.p_active });
+    return send(null);
+  }
+  if (endpoint.endsWith('/ot_set_period')) {
+    assert.ok(actor === admin || projectAdmins.some(grant => grant.active &&
+      grant.project_id === fields.p_project && grant.user_id === actor.id));
     const row = periods.find(item => item.project_id === fields.p_project);
     assert.equal(fields.p_expected_revision, row.revision);
     row.is_open = fields.p_open;
@@ -263,12 +275,39 @@ async function run() {
     const [backup] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     assert.match(backup.suggestedFilename(), /ot-supabase-backup/);
     assert.equal(await page.locator('#admin-project').count(), 0);
+    const grantForm = operator.locator('#admin-project-role');
+    await operator.getByText('Cấp quyền quản trị dự án', { exact: true }).click();
+    await grantForm.locator('[name=project]').selectOption('pr-a');
+    await grantForm.locator('[name=user]').selectOption(account.id);
+    await grantForm.getByRole('button').click();
+    await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
+
+    await page.locator('#refresh-ot').click();
+    await page.getByRole('heading', { name: 'Quản trị dự án', exact: true }).waitFor();
+    await page.getByText('Mở và khóa kỳ nhập OT', { exact: true }).click();
+    assert.deepEqual(await page.locator('#admin-period [name=project] option').evaluateAll(items =>
+      items.map(item => item.value)), ['', 'pr-a']);
+    assert.equal(await page.locator('#admin-project-role').count(), 0);
+    assert.equal(await page.locator('#admin-profile').count(), 0);
+    await fillPeriod(page, '#admin-period', 'pr-a');
+    await page.locator('#admin-period [name=active]').selectOption('false');
+    await page.locator('#admin-period button').click();
+    await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
+
+    await grantForm.locator('[name=project]').selectOption('pr-a');
+    await grantForm.locator('[name=user]').selectOption(account.id);
+    await grantForm.locator('[name=active]').selectOption('false');
+    await grantForm.getByRole('button').click();
+    await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
+    await page.locator('#refresh-ot').click();
+    await page.getByRole('heading', { name: 'Quản trị dự án', exact: true }).waitFor({ state: 'detached' });
+
     await page.locator('#logout').click();
     await sleepUntilMessage(page, 'Đã đăng xuất');
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, admin, locked period, manual and Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, system and project admin, locked period, manual and Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

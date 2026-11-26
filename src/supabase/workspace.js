@@ -1,4 +1,4 @@
-import { bindAdmin, renderAdmin } from './admin.js';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=3';
 import { bindMigration } from './migration.js';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportCsv, exportXlsx, getReport, renderReport } from './report.js';
@@ -37,9 +37,13 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
 
   function render() {
     const report = getReport(state);
+    const managedIds = new Set((state.projectAdmins ?? []).filter(grant => grant.active).map(grant => grant.project_id));
+    const managedProjects = state.projects.filter(project => managedIds.has(project.id));
     const open = new Set([...root.querySelectorAll('details[open] > summary')].map(summary => summary.textContent));
     root.innerHTML = `<div class="account-actions"><button type="button" id="refresh-ot">Tải lại dữ liệu</button></div>
-      ${renderReport(state, report)}${renderUpload(state, profile)}${admin ? renderAdmin(state) : ''}
+      ${renderReport(state, report)}${renderUpload(state, profile)}
+      ${admin ? renderAdmin(state) : managedProjects.length ? `<section class="account-card">
+        <h2>Quản trị dự án</h2>${renderPeriodAdmin(state, managedProjects)}</section>` : ''}
       <section class="account-card"><h2>Sao lưu dữ liệu</h2>
         <p>Bản JSON chứa dữ liệu trong phạm vi tài khoản hiện tại. Lưu ở nơi được phép lưu trữ dữ liệu OT.</p>
         <button type="button" id="export-backup">Tải JSON sao lưu</button>
@@ -82,12 +86,12 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     on('#export-backup', 'click', () => action(async () => {
       const snapshot = { format: 'ot-management-supabase-export', schemaVersion: 1, exportedAt: new Date().toISOString(),
         projects: state.projects, entries: state.rawEntries, periods: state.periods,
-        ...(admin && { profiles: state.profiles, memberships: state.memberships, audit: state.audit }) };
+        ...(admin && { profiles: state.profiles, memberships: state.memberships, audit: state.audit, projectAdmins: state.projectAdmins }) };
       download('ot-supabase-backup.json', JSON.stringify(snapshot, null, 2), 'application/json');
     }));
     const options = { action, api, alive, findPeriod, refresh, notice, uploadSignal: uploads.signal };
     bindUpload(root, state, profile, options);
-    if (admin) {
+    if (admin || managedProjects.length) {
       const submit = (selector, rpc, payload, message) => on(selector, 'submit', event => {
         event.preventDefault();
         const fields = Object.fromEntries(new FormData(event.currentTarget));
@@ -98,8 +102,11 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
           if (alive()) notice(message);
         });
       });
-      bindAdmin(root, state, submit, findPeriod);
-      bindMigration(root, state, options);
+      bindPeriodAdmin(submit, findPeriod);
+      if (admin) {
+        bindAdmin(root, state, submit);
+        bindMigration(root, state, options);
+      }
     }
   }
 
@@ -110,13 +117,17 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       expire(Error('Quyền tài khoản đã thay đổi. Vui lòng đăng nhập lại.'));
       return;
     }
-    const [projects, periods, entries, profiles, memberships, audit] = await Promise.all([
+    const [projects, periods, entries, profiles, memberships, audit, projectAdmins] = await Promise.all([
       api.list('ot_projects', { select: 'id,code,name,description,status', order: 'code.asc,id.asc' }),
       api.list('ot_periods', { select: 'project_id,year,month,is_open,revision,data_revision', order: 'project_id.asc,year.asc,month.asc' }),
       api.list('ot_entries', { select: '*', order: 'id.desc' }),
       admin ? api.list('ot_profiles', { select: 'id,email,full_name,requested_employee_code,employee_code,role,status', order: 'id.asc' }) : [],
       admin ? api.list('ot_project_members', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : [],
-      admin ? api.list('ot_audit_events', { select: '*', order: 'id.desc' }) : []
+      admin ? api.list('ot_audit_events', { select: '*', order: 'id.desc' }) : [],
+      api.list('ot_project_admins', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }).catch(error => {
+        if (error.status === 404 && error.code === 'PGRST205') return null;
+        throw error;
+      })
     ]);
     if (!alive()) return;
     if (!state.entries) {
@@ -124,7 +135,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       if (latest) Object.assign(state, { year: latest.year, month: latest.month });
     }
     if (!projects.some(project => project.id === state.project)) state.project = 'all';
-    Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit,
+    Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit, projectAdmins,
       periodIndex: new Map(periods.map(period => [periodKey(period.project_id, period.year, period.month), period])) });
     render();
   }
