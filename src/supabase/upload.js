@@ -1,7 +1,7 @@
 import { readExcel } from '../import/reader.mjs';
 import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, previewSheet } from '../import/engine.mjs';
 import { normalizeEmployeeCode } from './client.mjs';
-import { fromDatabase, prepareRows } from './records.mjs';
+import { fromDatabase, periodKey, prepareRows } from './records.mjs';
 import { defaultDays, durationMinutes, durationValue, monthLegend, monthOptions, renderMonthGrid } from './month-grid.js?v=7';
 import { buildOTReport } from '../domain/reports.mjs';
 import { esc, hours, option, projectOptions, table } from './ui.mjs';
@@ -32,7 +32,7 @@ export function renderUpload(state, profile) {
   </section>`;
 }
 
-function dailyRecord(inputs, types, profile, { year, month }) {
+function dailyRecord(inputs, types, profile, { year, month }, unit) {
   const days = inputs.flatMap((input, index) => {
     const minutes = durationMinutes(input.value);
     const day = index + 1;
@@ -43,7 +43,7 @@ function dailyRecord(inputs, types, profile, { year, month }) {
   if (!days.length) throw Error('Nhập giờ OT cho ít nhất một ngày.');
   const ntMinutes = days.filter(day => day.type === 'NT').reduce((sum, day) => sum + day.minutes, 0);
   const nnMinutes = days.filter(day => day.type !== 'NT').reduce((sum, day) => sum + day.minutes, 0);
-  return { employeeId: profile.employee_code, name: profile.full_name, source: 'daily',
+  return { employeeId: profile.employee_code, name: profile.full_name, unit, source: 'daily',
     days, ntMinutes, nnMinutes, totalMinutes: ntMinutes + nnMinutes };
 }
 
@@ -118,7 +118,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     return { year, month, project, period, batch, calendar, limits: findLimits(project, year, month) };
   }
 
-  function showPreview(scope, source, warnings = []) {
+  function showPreview(scope, source, warnings = [], onSaved) {
     const records = scope.batch ? source : source.filter(record =>
       /^[0-9]{1,8}$/.test(record.employeeId) && normalizeEmployeeCode(record.employeeId) === profile.employee_code);
     if (!records.length) throw Error('Không tìm thấy dòng OT cho phạm vi đã chọn.');
@@ -151,8 +151,8 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     const project = state.projects.find(item => item.id === scope.project);
     preview.innerHTML = `<form id="commit-ot">
       <h3>Xác nhận nhập OT · ${esc(project.code)} · ${scope.month}/${scope.year}</h3>
-      ${table(['Mã cán bộ', 'Họ tên trong nguồn', 'NT (giờ)', 'NN gồm L (giờ)', 'OT (giờ)'],
-        work.map(row => [row.employeeId, row.name, row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
+      ${table(['Mã cán bộ', 'Họ tên trong nguồn', 'Đơn vị (Ban/TT)', 'NT (giờ)', 'NN gồm L (giờ)', 'OT (giờ)'],
+        work.map(row => [row.employeeId, row.name, row.unit, row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
           row.unclassifiedMinutes ? '—' : hours(row.nnMinutes), hours(row.totalMinutes)]))}
       ${alerts.length ? '<ul>' + alerts.map(item => '<li>' + esc(item) + '</li>').join('') + '</ul>' : ''}
       <label><input type="checkbox" required> ${replace ? (scope.batch
@@ -171,6 +171,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
           p_replace: replace, p_batch: scope.batch, p_rows: rows
         });
         if (!alive()) return;
+        onSaved?.();
         preview.replaceChildren();
         await refresh();
         if (alive()) notice('Đã lưu OT cho ' + rows.length + ' cán bộ.');
@@ -181,6 +182,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
   const picker = root.querySelector('#manual-scope');
   if (picker) {
     const sheet = root.querySelector('#manual-sheet');
+    const drafts = state.manualDrafts ??= new Map();
     function buildSheet(selection) {
       const { project, year, month } = selection;
       preview.replaceChildren();
@@ -196,11 +198,18 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       const current = state.entries.find(entry => entry.status === 'active' && entry.projectId === project &&
         entry.year === year && entry.month === month && entry.employeeId === profile.employee_code);
       const byDay = new Map(current?.days.map(day => [Number(day.date.slice(-2)), day.minutes]));
+      const key = periodKey(project, year, month);
+      const draft = drafts.get(key);
+      const previousUnit = state.entries.filter(entry => entry.status === 'active' && entry.unit &&
+        entry.employeeId === profile.employee_code && (entry.year < year || (entry.year === year && entry.month <= month)))
+        .sort((a, b) => b.year - a.year || b.month - a.month)[0]?.unit;
       sheet.innerHTML = `<form id="manual-ot">
+        <label class="manual-unit">Đơn vị (Ban/TT)<input name="unit" required maxlength="250" value="${esc(draft?.unit ?? (current?.unit || previousUnit || ''))}"
+          placeholder="Nhập đơn vị của bạn trong kỳ này"></label>
         ${monthLegend()}
         <p class="account-muted">${editable ? 'Nhập số giờ, ví dụ 1,5 hoặc 1:30. Ô trống tính 0 giờ.'
-          : !period?.is_open ? 'Kỳ đang khóa. Bạn có thể xem bảng tháng.'
-            : 'Kỳ chưa có lịch đã lưu. Liên hệ quản trị viên để cấu hình.'}</p>
+          : saved ? 'Kỳ đang khóa. Bạn có thể nhập nháp trong phiên này và lưu khi quản trị viên mở kỳ.'
+            : 'Kỳ chưa có lịch đã lưu. Bạn có thể nhập nháp trong phiên này và lưu sau khi quản trị viên lưu lịch và mở kỳ.'}</p>
         ${current?.source === 'summary' ? '<p class="account-muted">Kỳ này đã có bản tổng hợp. Nếu lưu bảng ngày mới, bản tổng hợp sẽ được thay thế.</p>' : ''}
         ${renderMonthGrid(year, month, types, {
           label: 'Giờ OT tháng ' + month + '/' + year,
@@ -208,15 +217,18 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
             { label: 'Loại ngày', cell: type => esc(type) },
             ...(limits ? [{ label: 'Giới hạn (giờ)', cell: (_, day) => hours(limits[day - 1]) }] : []),
             { label: 'Số giờ OT', cell: (_, day) => `<input name="duration" inputmode="decimal" autocomplete="off"
-              aria-label="Giờ OT ngày ${day}" value="${byDay.has(day) ? durationValue(byDay.get(day)) : ''}" ${editable ? '' : 'readonly'}>` }
+              aria-label="Giờ OT ngày ${day}" value="${esc(draft?.values[day - 1] ?? (byDay.has(day) ? durationValue(byDay.get(day)) : ''))}">` }
           ]
         })}
         <div class="account-actions month-actions"><output aria-live="polite" id="manual-total"></output>
-          ${editable ? '<button class="primary">Xem trước</button>' : ''}
+          <button class="primary" ${editable ? '' : 'disabled'}>Xem trước</button>
         </div>
       </form>`;
       const form = sheet.querySelector('form');
       const inputs = [...form.querySelectorAll('input[name=duration]')];
+      function keepDraft() {
+        drafts.set(key, { unit: form.elements.unit.value, values: inputs.map(input => input.value) });
+      }
       function updateTotal() {
         const minutes = inputs.map(input => durationMinutes(input.value));
         const invalidDay = minutes.findIndex((value, index) => value === null || (limits && value > limits[index]));
@@ -229,8 +241,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         preview.replaceChildren();
       }
       updateTotal();
-      if (!editable) return;
-      form.oninput = updateTotal;
+      form.oninput = () => { keepDraft(); updateTotal(); };
       form.onpaste = event => {
         const first = inputs.indexOf(event.target);
         const text = event.clipboardData?.getData('text/plain').replace(/\r?\n$/, '');
@@ -242,14 +253,17 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
           return;
         }
         cells.forEach((value, offset) => { inputs[first + offset].value = value; });
+        keepDraft();
         updateTotal();
       };
       form.onsubmit = event => {
         event.preventDefault();
-        if (!picker.reportValidity()) return;
+        if (!editable || !picker.reportValidity()) return;
         action(() => {
           const scope = context(selection);
-          showPreview(scope, [dailyRecord(inputs, types, profile, scope)]);
+          const unit = form.elements.unit.value.trim();
+          if (!unit) throw Error('Nhập đơn vị (Ban/TT) của kỳ này.');
+          showPreview(scope, [dailyRecord(inputs, types, profile, scope, unit)], [], () => drafts.delete(key));
         });
       };
     }

@@ -3,8 +3,8 @@ import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
 import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
 import { bindMigration } from './migration.js?v=7';
 import { fromDatabase, periodKey } from './records.mjs';
-import { exportCsv, exportXlsx, getReport, renderReport } from './report.js';
-import { bindUpload, renderUpload } from './upload.js?v=7';
+import { exportAttendance, exportCsv, exportXlsx, getReport, renderReport } from './report.js?v=8';
+import { bindUpload, renderUpload } from './upload.js?v=8';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };
@@ -142,7 +142,11 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     function bindReport() {
       on('#report-xlsx', 'click', () => action(() => exportXlsx(state, alive)));
       on('#report-csv', 'click', () => action(async () => exportCsv(getReport(state))));
-      root.querySelector('#report-form').onsubmit = filterReport;
+      const form = root.querySelector('#report-form');
+      if (!member) on('#report-attendance', 'click', () => {
+        if (form.reportValidity()) action(() => exportAttendance(state, new FormData(form), findCalendar, alive));
+      });
+      form.onsubmit = filterReport;
     }
     function filterReport(event) {
       event.preventDefault();

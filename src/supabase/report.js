@@ -1,5 +1,6 @@
 import { buildOTReport } from '../domain/reports.mjs';
 import { createOTWorkbook, loadSheetJS } from '../reports/excel-export.mjs';
+import { createAttendanceFile } from '../reports/attendance.mjs';
 import { download, esc, hours, option, projectOptions, table } from './ui.mjs';
 
 export function renderReport(state, report) {
@@ -19,11 +20,12 @@ export function renderReport(state, report) {
         <button class="primary">Áp dụng bộ lọc</button>
         <button type="button" id="report-xlsx">Xuất Excel</button>
         <button type="button" id="report-csv">Xuất CSV</button>
+        ${state.role !== 'member' ? '<button type="button" id="report-attendance">Xuất bảng trình ký</button>' : ''}
       </div>
     </form>
     <p>Tổng OT theo bộ lọc: <strong>${hours(report.totalMinutes)} giờ</strong> · ${report.employeeCount} cán bộ</p>
-    ${table(['Mã cán bộ', 'Họ tên', 'NT (giờ)', 'NN gồm L (giờ)', 'OT bộ lọc (giờ)', 'OT mọi dự án (giờ)', 'Còn hạn mức năm (giờ)'],
-      report.rows.map(row => [row.employeeId, row.name, row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
+    ${table(['Mã cán bộ', 'Họ tên', 'Đơn vị (Ban/TT)', 'NT (giờ)', 'NN gồm L (giờ)', 'OT bộ lọc (giờ)', 'OT mọi dự án (giờ)', 'Còn hạn mức năm (giờ)'],
+      report.rows.map(row => [row.employeeId, row.name, row.unit, row.unclassifiedMinutes ? '—' : hours(row.ntMinutes),
         row.unclassifiedMinutes ? '—' : hours(row.nnMinutes), hours(row.totalMinutes), hours(row.globalPeriodMinutes),
         hours(row.remainingYearMinutes)]))}
     ${annual ? table(['Mã cán bộ', ...Array.from({ length: 12 }, (_, month) => 'T' + (month + 1))],
@@ -61,6 +63,20 @@ export async function exportXlsx(state, alive) {
     report: state.reportMode, projectId: state.project, query: state.query
   }, XLSX);
   XLSX.writeFile(book, 'bao-cao-ot-' + state.year + '.xlsx');
+}
+
+export async function exportAttendance(state, fields, findCalendar, alive) {
+  const project = state.projects.find(item => item.id === fields.get('project'));
+  if (!project) throw Error('Chọn một dự án cụ thể để xuất bảng trình ký.');
+  const year = Number(fields.get('year'));
+  const month = Number(fields.get('month'));
+  const calendar = findCalendar(project.id, year, month);
+  const XLSX = await loadSheetJS();
+  if (!alive()) return;
+  const content = createAttendanceFile({ project, year, month, calendar, entries: state.entries }, XLSX);
+  const code = project.code.replace(/[^0-9A-Za-z_-]/g, '-');
+  download('Cham-cong-OT-' + code + '-' + year + '-' + String(month).padStart(2, '0') + '.xlsx',
+    new Uint8Array(content), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
 export function exportCsv(report) {

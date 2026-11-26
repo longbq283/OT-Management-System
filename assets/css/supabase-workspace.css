@@ -68,3 +68,4 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .workspace-role-options span { color: #456256; }
 .project-role-state { align-self: center; padding: .3rem .55rem; font-size: .875rem; }
 .account-main .month-sheet input[aria-invalid="true"] { border-color: #a72d2d; background: #fff0f0; }
+.manual-unit { max-width: 28rem; }

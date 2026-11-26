@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const { existsSync } = require('node:fs');
+const { existsSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
-const { bookFrom, binary } = require('../fixtures/workbooks.cjs');
+const { XLSX, bookFrom, binary } = require('../fixtures/workbooks.cjs');
 
 const port = 4191;
 const base = 'http://127.0.0.1:' + port;
@@ -282,10 +282,16 @@ async function run() {
     assert.equal(await page.locator('#manual-scope [name=project]').inputValue(), 'pr-b');
     assert.equal(await page.getByLabel('Giờ OT ngày 1', { exact: true }).isEditable(), true);
     await fillPeriod(page, '#manual-scope', 'pr-a');
-    await sleepUntilMessage(page, 'Kỳ đang khóa');
+    await sleepUntilMessage(page, 'Kỳ chưa có lịch đã lưu');
     assert.equal(await page.locator('#manual-ot [name=duration]').count(), 30);
-    assert.equal(await page.getByLabel('Giờ OT ngày 1', { exact: true }).isEditable(), false);
+    const dayOne = page.getByLabel('Giờ OT ngày 1', { exact: true });
+    const dayTwo = page.getByLabel('Giờ OT ngày 2', { exact: true });
+    const unit = page.getByLabel('Đơn vị (Ban/TT)', { exact: true });
+    assert.equal(await dayOne.isEditable(), true);
+    assert.equal(await page.locator('#manual-ot button').isDisabled(), true);
     assert.equal(await page.locator('#report-form').isVisible(), false);
+    await unit.fill('Ban cũ giả lập');
+    await dayOne.fill('1,5');
 
     await operator.locator('[data-pane=calendar]').click();
     await fillPeriod(operator, '#calendar-scope', 'pr-a');
@@ -315,9 +321,8 @@ async function run() {
 
     await page.locator('#refresh-ot').click();
     await sleepUntilMessage(page, 'Đã tải dữ liệu mới nhất.');
-    const dayOne = page.getByLabel('Giờ OT ngày 1', { exact: true });
-    const dayTwo = page.getByLabel('Giờ OT ngày 2', { exact: true });
-    assert.equal(await dayOne.getAttribute('readonly'), null);
+    assert.equal(await dayOne.inputValue(), '1,5');
+    assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
     assert.equal(await page.locator('#manual-ot tr').nth(1).locator('td').nth(1).innerText(), 'L');
     await dayOne.fill('25');
     await page.locator('#manual-ot button').click();
@@ -342,11 +347,14 @@ async function run() {
     await page.locator('#commit-ot button.primary').click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
     assert.equal(await dayTwo.inputValue(), '5');
+    assert.equal(entries.find(row => row.project_id === 'pr-a').unit, 'Ban cũ giả lập');
 
     await page.getByText('Nhập từ Excel', { exact: true }).click();
+    await fillPeriod(page, '#manual-scope', 'pr-b');
+    assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
     await fillPeriod(page, '#excel-ot', 'pr-b');
     const workbook = binary(bookFrom([['Họ tên', 'Mã cán bộ', 'Đơn vị', 1, 2],
-      [account.full_name, '23', 'Đơn vị giả lập', 12, 13], ['Người khác', '99', 'Đơn vị giả lập', 1, 1]]));
+      [account.full_name, '23', 'Ban mới giả lập', 12, 13], ['Người khác', '99', 'Đơn vị giả lập', 1, 1]]));
     await page.locator('#excel-ot [name=file]').setInputFiles({
       name: 'fixture.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: workbook
     });
@@ -366,6 +374,9 @@ async function run() {
     await sleepUntilMessage(page, 'Tổng OT theo bộ lọc: 25 giờ');
     const reportText = await page.locator('#report-form').locator('..').innerText();
     assert.match(reportText, /50/);
+    assert.match(reportText, /Ban cũ giả lập/);
+    assert.doesNotMatch(reportText, /Ban mới giả lập/);
+    assert.equal(await page.locator('#report-attendance').count(), 0);
     assert.match(reportText, /vượt 10 giờ/);
     await page.locator('[data-pane=backup]').click();
     const [backup] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
@@ -400,6 +411,19 @@ async function run() {
     await page.getByRole('button', { name: 'Mở kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
 
+    await page.locator('[data-pane=report]').click();
+    await fillPeriod(page, '#report-form', 'pr-a');
+    const [attendance] = await Promise.all([page.waitForEvent('download'), page.locator('#report-attendance').click()]);
+    assert.equal(attendance.suggestedFilename(), 'Cham-cong-OT-A-2026-11.xlsx');
+    const signingSheet = XLSX.read(readFileSync(await attendance.path()), { type: 'buffer' }).Sheets['Chấm công OT'];
+    assert.equal(signingSheet.B8.v, '00000023');
+    assert.equal(signingSheet.C8.v, 'Ban cũ giả lập');
+    assert.equal(signingSheet.D8.v, 20);
+    assert.equal(signingSheet.E7.v, 'L');
+    assert.equal(signingSheet.AJ8.v, 5);
+    assert.equal(signingSheet.AK9.v, 25);
+    assert.equal(signingSheet.C13.v, 'Lập bảng');
+
     await grantForm.locator('[name=project]').selectOption('pr-a');
     await grantForm.locator('[name=user]').selectOption(account.id);
     await grantForm.locator('[name=active]').selectOption('false');
@@ -419,7 +443,7 @@ async function run() {
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, monthly OT sheet, inline calendar and locked period, Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();
