@@ -1,4 +1,5 @@
-import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=7';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=10';
+import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js';
 import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
 import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
 import { bindMigration } from './migration.js?v=7';
@@ -102,8 +103,10 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa có dự án được phân công. Quản trị hệ thống cần thêm bạn vào danh sách thành viên của dự án.</p></section>']] : []),
       ['report', 'Báo cáo', renderReport(state, getReport(state))],
       ...(central ? [['management', 'Quản lý', renderAdmin(state)],
+        ['users', 'Quản lý người dùng', renderUsers(state)],
         ['permissions', 'Phân quyền dự án', renderProjectPermissions(state)],
         ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
+      ...(state.role === 'project' ? [['members', 'Thành viên dự án', renderProjectMembers(state)]] : []),
       ['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>
         <p>Bản JSON chứa dữ liệu trong phạm vi vai trò đang sử dụng.</p>
         <button type="button" id="export-backup">Tải JSON sao lưu</button>
@@ -123,6 +126,8 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     </nav>` + panes.map(([id, , content]) =>
       `<div id="pane-${id}" data-workspace-pane="${id}" ${state.pane === id ? '' : 'hidden'}>${content}</div>`).join('');
     bindNavigation();
+    const loadProjectMembers = state.role === 'project' ? bindProjectMembers(root, state, { action, api, alive, notice, expire }) : null;
+    if (state.pane === 'members') void loadProjectMembers?.();
     for (const button of root.querySelectorAll('[data-pane]')) {
       button.onclick = () => {
         if (busy) return;
@@ -133,6 +138,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
           item.setAttribute('aria-current', current ? 'page' : 'false');
           root.querySelector('#pane-' + item.dataset.pane).hidden = !current;
         }
+        if (state.pane === 'members') void loadProjectMembers?.();
       };
     }
     for (const summary of root.querySelectorAll('details > summary')) {
@@ -184,6 +190,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       if (state.calendars === null) bindPeriodAdmin(submit, findPeriod);
       if (central) {
         bindAdmin(root, state, submit);
+        bindUsers(root, state, { submit, action, api, refresh, alive, notice });
         bindMigration(root, state, options);
       }
     }
@@ -320,7 +327,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         if (error.code !== '42703' && error.code !== 'PGRST204') throw error;
         return { calendars: await optionalTable(listCalendars(calendarFields)), limitsEnabled: false };
       });
-    const [projects, periods, entries, profiles, memberships, audit, projectAdmins, { calendars, limitsEnabled }] = await Promise.all([
+    const [projects, periods, entries, profiles, memberships, audit, projectAdmins, { calendars, limitsEnabled }, invitations] = await Promise.all([
       scoped('ot_projects', { select: 'id,code,name,description,status', order: 'code.asc,id.asc',
         ...(!central && { id: filter.project_id }) }),
       scoped('ot_periods', { select: 'project_id,year,month,is_open,revision,data_revision', order: 'project_id.asc,year.asc,month.asc', ...filter }),
@@ -329,7 +336,8 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       central ? api.list('ot_project_members', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : [],
       central ? api.list('ot_audit_events', { select: '*', order: 'id.desc' }) : [],
       central && grants !== null ? api.list('ot_project_admins', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : null,
-      calendarResponse
+      calendarResponse,
+      central ? optionalTable(api.list('ot_user_invitations', { select: 'email,full_name,employee_code', order: 'email.asc' })) : null
     ]);
     if (!alive()) return;
     if (!state.entries) {
@@ -351,7 +359,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       else if (active.length === 1) state.manualScope = { project: active[0].id, year: state.year, month: state.month };
     }
     Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit,
-      projectAdmins, calendars, limitsEnabled, calendarIndex, periodIndex: byPeriod(periods) });
+      projectAdmins, invitations, calendars, limitsEnabled, calendarIndex, periodIndex: byPeriod(periods) });
     render();
   }
 

@@ -18,6 +18,7 @@ const projects = [{ id: 'pr-a', code: 'A', name: 'Dự án giả lập A', statu
 const periods = projects.map(project => ({ project_id: project.id, year: 2026, month: 11,
   is_open: project.code === 'B', revision: 1, data_revision: 0 }));
 const entries = [];
+const invitations = [];
 const projectAdmins = [{ project_id: 'pr-a', user_id: admin.id, active: true }];
 const memberships = [{ project_id: 'pr-b', user_id: account.id, active: true },
   { project_id: 'pr-b', user_id: admin.id, active: true }];
@@ -38,7 +39,7 @@ async function routeRequest(route) {
   const send = (value, status = 200) => route.fulfill({ status, json: value,
     headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
       'sb-request-id': 'fixture-request-id' } });
-  const session = user => ({ access_token: 'fixture-session-' + user.id, user: { id: user.id } });
+  const session = user => ({ access_token: 'fixture-session-' + user.id, expires_in: 3600, user: { id: user.id } });
   if (endpoint.endsWith('/signup')) {
     if (networkError) return route.abort();
     if (signupFailure) return send(signupFailure, 500);
@@ -63,14 +64,39 @@ async function routeRequest(route) {
   if (endpoint.endsWith('/ot_entries')) return send(entries.filter(row => inScope('project_id', row.project_id) && inScope('user_id', row.user_id)));
   if (endpoint.endsWith('/ot_project_members')) return send(memberships.filter(row => inScope('user_id', row.user_id)));
   if (endpoint.endsWith('/ot_audit_events')) return send([]);
-  if (endpoint.endsWith('/ot_review_profile')) {
+  if (endpoint.endsWith('/ot_consume_user_invitation')) return send(false);
+  if (endpoint.endsWith('/ot_user_invitations')) {
     assert.equal(actor, admin);
-    Object.assign(account, { status: 'active', employee_code: fields.p_employee_code });
+    return send(invitations);
+  }
+  if (endpoint.endsWith('/ot_save_user_invitation')) {
+    assert.equal(actor, admin);
+    if (fields.p_active) invitations.push({ email: fields.p_email, full_name: fields.p_full_name, employee_code: fields.p_employee_code });
+    else invitations.splice(invitations.findIndex(item => item.email === fields.p_email), 1);
     return send(null);
   }
-  if (endpoint.endsWith('/ot_set_member')) {
+  if (endpoint.endsWith('/ot_manage_user')) {
     assert.equal(actor, admin);
-    memberships.push({ project_id: fields.p_project, user_id: fields.p_user, active: fields.p_active });
+    account.status = fields.p_active ? 'active' : 'disabled';
+    account.full_name = fields.p_full_name;
+    if (fields.p_active) account.employee_code = fields.p_employee_code;
+    return send(null);
+  }
+  const manages = project => actor === admin || projectAdmins.some(grant =>
+    grant.project_id === project && grant.user_id === actor.id && grant.active);
+  if (endpoint.endsWith('/ot_list_project_members')) {
+    assert.ok(manages(fields.p_project));
+    return send(memberships.filter(row => row.project_id === fields.p_project && row.active).map(row => {
+      const person = [account, admin].find(item => item.id === row.user_id);
+      return { user_id: row.user_id, employee_code: person.employee_code, full_name: person.full_name, status: person.status };
+    }));
+  }
+  if (endpoint.endsWith('/ot_set_member') || endpoint.endsWith('/ot_set_member_by_code')) {
+    assert.ok(manages(fields.p_project));
+    const user = fields.p_user ?? [account, admin].find(person => person.employee_code === fields.p_employee_code).id;
+    const existing = memberships.find(member => member.project_id === fields.p_project && member.user_id === user);
+    if (existing) existing.active = fields.p_active;
+    else memberships.push({ project_id: fields.p_project, user_id: user, active: fields.p_active });
     return send(null);
   }
   if (endpoint.endsWith('/ot_project_admins')) {
@@ -267,11 +293,22 @@ async function run() {
     await operator.locator('[data-role=system]').click();
     await operator.locator('[data-pane=import]').click();
     await operator.locator('#excel-ot').waitFor();
-    await operator.locator('[data-pane=management]').click();
-    await operator.getByText('Duyệt tài khoản', { exact: true }).click();
+    await operator.locator('[data-pane=users]').click();
+    await operator.getByRole('heading', { name: 'Quản lý người dùng', exact: true }).waitFor();
     await operator.locator('#admin-profile [name=user]').selectOption(account.id);
-    await operator.locator('#admin-profile button').click();
+    await operator.getByRole('button', { name: 'Lưu và kích hoạt', exact: true }).click();
     await sleepUntilMessage(operator, 'Đã cập nhật duyệt tài khoản.');
+    await operator.getByText('Thêm người dùng', { exact: true }).click();
+    await operator.locator('#user-invitation [name=email]').fill('fixture-new@bidv.com.vn');
+    await operator.locator('#user-invitation [name=fullName]').fill('Đăng ký trước giả lập');
+    await operator.locator('#user-invitation [name=code]').fill('456');
+    await operator.getByRole('button', { name: 'Lưu đăng ký trước' }).click();
+    await sleepUntilMessage(operator, 'Đã lưu hồ sơ đăng ký trước.');
+    assert.equal(invitations[0].employee_code, '00000456');
+    await operator.locator('#cancel-invitation [name=email]').selectOption('fixture-new@bidv.com.vn');
+    await operator.getByRole('button', { name: 'Hủy đăng ký trước' }).click();
+    await sleepUntilMessage(operator, 'Đã hủy hồ sơ đăng ký trước.');
+
     await operator.getByText('Phân công dự án', { exact: true }).click();
     await operator.locator('#admin-member [name=project]').selectOption('pr-a');
     await operator.locator('#admin-member [name=user]').selectOption(account.id);
@@ -283,6 +320,18 @@ async function run() {
     await page.getByRole('heading', { name: 'Nhập giờ OT trực tiếp', exact: true }).waitFor();
     assert.equal(await page.locator('#manual-scope [name=project]').inputValue(), 'pr-b');
     assert.equal(await page.getByLabel('Giờ OT ngày 1', { exact: true }).isEditable(), true);
+    const session = await page.evaluate(() => {
+      const data = JSON.parse(sessionStorage.getItem('ot-workspace:session'));
+      return { id: data.id, remaining: data.expiresAt - Date.now(), hasRefreshToken: Boolean(data.refresh_token) };
+    });
+    assert.equal(session.id, account.id);
+    assert.ok(session.remaining > 29 * 60 * 1000 && session.remaining <= 30 * 60 * 1000);
+    assert.equal(session.hasRefreshToken, false);
+    const tokensBeforeReload = calls.filter(call => call.endpoint.endsWith('/token')).length;
+    await page.reload();
+    await page.getByRole('heading', { name: 'Nhập giờ OT trực tiếp', exact: true }).waitFor();
+    assert.equal(calls.filter(call => call.endpoint.endsWith('/token')).length, tokensBeforeReload);
+
     await fillPeriod(page, '#manual-scope', 'pr-a');
     await sleepUntilMessage(page, 'Kỳ chưa có lịch đã lưu');
     assert.equal(await page.locator('#manual-ot [name=duration]').count(), 30);
@@ -444,6 +493,18 @@ async function run() {
     await page.getByRole('button', { name: 'Mở kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
 
+    await page.locator('[data-pane=members]').click();
+    await page.locator('#team-add').waitFor();
+    assert.deepEqual(await page.locator('#team-project option').evaluateAll(items => items.map(item => item.value)), ['pr-a']);
+    await page.locator('#team-add [name=code]').fill('1');
+    await page.getByRole('button', { name: 'Thêm vào dự án', exact: true }).click();
+    await sleepUntilMessage(page, 'Đã thêm thành viên vào dự án.');
+    assert.ok(memberships.some(row => row.project_id === 'pr-a' && row.user_id === admin.id && row.active));
+    await page.locator('#team-remove [name=user]').selectOption(admin.id);
+    await page.getByRole('button', { name: 'Gỡ khỏi dự án', exact: true }).click();
+    await sleepUntilMessage(page, 'Đã gỡ thành viên khỏi dự án.');
+    assert.ok(memberships.some(row => row.project_id === 'pr-a' && row.user_id === admin.id && !row.active));
+
     await page.locator('[data-pane=report]').click();
     await fillPeriod(page, '#report-form', 'pr-a');
     const [attendance] = await Promise.all([page.waitForEvent('download'), page.locator('#report-attendance').click()]);
@@ -467,16 +528,25 @@ async function run() {
     await page.getByText('Quản trị dự án · Chưa được cấp quyền', { exact: true }).waitFor();
     assert.equal(await page.locator('#calendar-scope').count(), 0);
     await page.reload();
-    await login(page, account);
     await sleepUntilMessage(page, 'Tài khoản chưa có quyền Quản trị dự án.');
     assert.equal(await page.locator('#calendar-scope').count(), 0);
 
     await page.locator('#logout').click();
     await sleepUntilMessage(page, 'Đã đăng xuất');
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
+    await login(page, account);
+    await page.getByRole('heading', { name: 'Hồ sơ của tôi' }).waitFor();
+    await page.evaluate(() => {
+      const key = 'ot-workspace:session';
+      const saved = JSON.parse(sessionStorage.getItem(key));
+      sessionStorage.setItem(key, JSON.stringify({ ...saved, expiresAt: Date.now() - 1 }));
+    });
+    await page.reload();
+    await page.getByRole('heading', { name: 'Đăng nhập', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('ot-workspace:session')), null);
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, reload and expiry, user management, project membership, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

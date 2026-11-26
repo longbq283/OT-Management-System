@@ -1,5 +1,5 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=7';
-import { mountWorkspace } from '../../src/supabase/workspace.js?v=9';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=10';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=10';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');
@@ -13,6 +13,7 @@ const signupOtp = document.querySelector('#signup-otp');
 const statuses = { pending: 'Chờ quản trị viên duyệt', active: 'Đang hoạt động', disabled: 'Đã vô hiệu hóa' };
 let closeWorkspace;
 let busy = false;
+let expiryTimer;
 
 function notice(message = '', isError = false) {
   for (const id of ['status', 'error']) {
@@ -48,6 +49,7 @@ function showForm(id, email) {
 }
 
 function clearAccount() {
+  clearTimeout(expiryTimer);
   closeWorkspace?.();
   closeWorkspace = undefined;
   workspace.replaceChildren();
@@ -66,16 +68,29 @@ function expire(error) {
 }
 
 async function showProfile() {
+  clearTimeout(expiryTimer);
+  if (api.expiresAt) expiryTimer = setTimeout(() => {
+    expire(Error('Phiên đã hết hạn. Vui lòng đăng nhập lại.'));
+  }, Math.max(0, api.expiresAt - Date.now()));
   auth.hidden = true;
   logout.hidden = false;
   setOtpStep(false);
   for (const form of authForms) form.reset();
   profilePanel.hidden = false;
   const ownId = api.userId;
-  const [profile] = await api.list('ot_profiles', {
+  const fields = {
     select: 'id,email,full_name,requested_employee_code,employee_code,role,status',
     id: 'eq.' + ownId
-  });
+  };
+  let [profile] = await api.list('ot_profiles', fields);
+  if (profile?.status === 'pending') {
+    try {
+      if (await api.rpc('ot_consume_user_invitation', {})) [profile] = await api.list('ot_profiles', fields);
+    } catch (error) {
+      if (error.code === '23505') notice('Mã cán bộ trong hồ sơ đăng ký trước đang bị trùng. Hãy liên hệ quản trị hệ thống.', true);
+      else if (error.code !== 'PGRST202') throw error;
+    }
+  }
   const heading = document.createElement('h1');
   heading.textContent = 'Hồ sơ của tôi';
   const text = document.createElement('p');
@@ -193,4 +208,5 @@ logout.addEventListener('click', () => run(async () => {
   notice('Đã đăng xuất.');
 }));
 
-showForm('login');
+if (api.userId) run(showProfile);
+else showForm('login');

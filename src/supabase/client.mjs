@@ -1,5 +1,7 @@
 export const SUPABASE_URL = 'https://zlvukgylpcuwpvmkuxgm.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_9egkmRYStJQsCOMYUPAcAg_ZX4rDAuW';
+const sessionKey = 'ot-workspace:session';
+const sessionDuration = 30 * 60 * 1000;
 
 export function normalizeEmployeeCode(value) {
   if (typeof value !== 'string' || !/^[0-9]{1,8}$/.test(value)) {
@@ -41,6 +43,9 @@ const errorMessages = {
   OT_DAILY_LIMIT: 'Có ngày vượt giới hạn giờ của dự án. Hãy tải lại lịch và điều chỉnh số giờ.',
   OT_LIMITS_INVALID: 'Giới hạn OT cần từ 0 đến 24 giờ cho từng ngày.',
   OT_DAILY_REQUIRED: 'Kỳ này yêu cầu số giờ chi tiết theo từng ngày.',
+  OT_PROFILE_EXISTS: 'Tài khoản đã tồn tại. Chọn tài khoản trong phần chỉnh sửa.',
+  OT_CODE_HAS_HISTORY: 'Mã cán bộ đã có lịch sử OT. Bạn vẫn có thể sửa họ tên hoặc trạng thái.',
+  OT_MEMBER_MISSING: 'Tài khoản không còn là thành viên của dự án này.',
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
 };
 
@@ -63,6 +68,29 @@ function signupServerMessage(response, result, code) {
 
 export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)) {
   let session = null;
+  try {
+    const cached = JSON.parse(globalThis.sessionStorage?.getItem(sessionKey) ?? 'null');
+    if (typeof cached?.id === 'string' && typeof cached?.token === 'string' &&
+      Number.isFinite(cached.expiresAt) && cached.expiresAt > Date.now()) session = cached;
+  } catch { /* The app can still work in memory if browser storage is unavailable. */ }
+
+  function remember(value) {
+    session = value;
+    try {
+      if (value) globalThis.sessionStorage?.setItem(sessionKey, JSON.stringify(value));
+      else globalThis.sessionStorage?.removeItem(sessionKey);
+    } catch { /* Browser storage may be disabled. */ }
+  }
+  if (!session) remember(null);
+
+  function currentSession() {
+    if (!session || session.expiresAt <= Date.now()) {
+      const error = Error('Phiên đã hết hạn. Vui lòng đăng nhập lại.');
+      error.status = 401;
+      throw error;
+    }
+    return session;
+  }
 
   async function request(path, { method = 'GET', body, token, headers = {} } = {}) {
     let response;
@@ -104,13 +132,17 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
       if (!result?.access_token || !result?.user?.id) {
         throw Error('Supabase chưa cấp phiên đăng nhập.');
       }
-      session = { token: result.access_token, id: result.user.id };
+      const now = Date.now();
+      const tokenExpiry = Number(result.expires_at) * 1000 ||
+        (Number(result.expires_in) > 0 ? now + Number(result.expires_in) * 1000 : Infinity);
+      remember({ token: result.access_token, id: result.user.id, expiresAt: Math.min(now + sessionDuration, tokenExpiry) });
     }
     return result;
   }
 
   return {
     get userId() { return session?.id; },
+    get expiresAt() { return session?.expiresAt; },
     async signUp({ email, password, fullName, employeeCode }) {
       const result = await auth('signup', {
         email, password, data: { full_name: fullName.trim(), employee_code: normalizeEmployeeCode(employeeCode) }
@@ -125,13 +157,12 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
     async signIn(email, password) { await auth('token?grant_type=password', { email, password }, { signIn: true }); },
     async signOut() {
       const token = session?.token;
-      session = null;
+      remember(null);
       if (token) await auth('logout?scope=local', undefined, { token });
     },
-    forget() { session = null; },
+    forget() { remember(null); },
     async list(table, query) {
-      const current = session;
-      if (!current) throw Error('Vui lòng đăng nhập.');
+      const current = currentSession();
       const rows = [];
       const params = new URLSearchParams(query);
       for (let offset = 0; ; offset += 500) {
@@ -149,8 +180,10 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
       }
     },
     async rpc(name, body) {
-      if (!session) throw Error('Vui lòng đăng nhập.');
-      return (await request('/rest/v1/rpc/' + name, { method: 'POST', body, token: session.token })).result;
+      const current = currentSession();
+      const { result } = await request('/rest/v1/rpc/' + name, { method: 'POST', body, token: current.token });
+      if (current !== session) throw Error('Tài khoản đã thay đổi.');
+      return result;
     }
   };
 }

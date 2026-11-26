@@ -6,12 +6,12 @@ Trang tài khoản và nghiệp vụ là `kiem-tra-tai-khoan.html`. GitHub Pages
 
 1. Sao lưu database trên Supabase trước khi cập nhật. Chạy `supabase/inspect.sql` trong SQL Editor và đối chiếu bốn bảng hiện có, ACL, RLS, ràng buộc và các hàm đăng ký. Migration được viết theo các tên cột đã cung cấp, khóa dự án và hồ sơ kiểu UUID, khóa kỳ gồm dự án/năm/tháng, cột phiên bản là số nguyên có giá trị mặc định 0. Kiểm tra cả các policy hạn chế hiện có nếu database có thêm policy riêng.
 2. Chạy `supabase/migrations/202611250001_ot_workspace.sql` một lần bằng chủ sở hữu các bảng. Migration chạy trong transaction, kiểm tra cấu trúc trước khi thêm quyền đọc, bảng phiên bản OT, nhật ký và các RPC ghi. Nếu lỗi cấu trúc, trùng mã hoặc trùng khóa, điều tra dữ liệu và schema trước khi chạy lại. Migration giữ các dòng hiện tại.
-3. Chạy `supabase/migrations/202611260001_project_admins.sql`, sau đó chạy `supabase/migrations/202611260002_workspace_roles_calendar.sql` và `supabase/migrations/202611260003_ot_daily_limits.sql`. Chỉ chạy những migration chưa từng áp dụng, theo thứ tự tên tệp.
+3. Chạy `supabase/migrations/202611260001_project_admins.sql`, sau đó chạy `supabase/migrations/202611260002_workspace_roles_calendar.sql`, `supabase/migrations/202611260003_ot_daily_limits.sql` và `supabase/migrations/202611260004_user_management.sql`. Chỉ chạy những migration chưa từng áp dụng, theo thứ tự tên tệp.
 4. Trong **Authentication → Email Templates → Confirm signup**, dùng `{{ .Token }}` trong nội dung để gửi mã OTP đăng ký. Giữ xác nhận email bật, kiểm tra cấu hình SMTP và Site URL. Nếu dùng mẫu Việt hóa, ví dụ nội dung là “Mã xác nhận đăng ký OT Workspace của bạn là {{ .Token }}.” Trang xác nhận bằng `type: signup`.
 5. Người dự kiến quản trị tự đăng ký bằng địa chỉ BIDV của mình rồi xác nhận OTP thật. Hồ sơ vẫn ở trạng thái chờ duyệt. Sau đó điền đúng email và mã cán bộ 8 số vào `supabase/first-admin.sql` và chạy trong SQL Editor. Script kiểm tra email đã xác nhận và từ chối chạy nếu đã có admin hoạt động. Sau khi cấp quyền, đăng xuất và đăng nhập lại.
 6. Admin tạo dự án, duyệt tài khoản và phân công. Chọn vai trò quản trị, lưu lịch của tháng rồi mở kỳ theo dự án, năm và tháng. Để xác minh thực tế, dùng tài khoản kiểm thử được phép nhận email và một dự án thử với dữ liệu giả lập. Kiểm tra nhận OTP, đăng nhập, trạng thái chờ duyệt, ghi trong kỳ mở và từ chối trong kỳ khóa.
 
-Trang dùng khóa publishable công khai. Mật khẩu và OTP chỉ gửi trực tiếp đến Supabase. Access token được giữ trong bộ nhớ của tab. Tải lại trang hoặc hết hạn phiên cần đăng nhập lại. Đăng xuất xóa ngay giao diện và dữ liệu của tài khoản khỏi tab.
+Trang dùng khóa publishable công khai. Mật khẩu và OTP chỉ gửi trực tiếp đến Supabase. Access token được lưu trong tab tối đa 30 phút từ lúc đăng nhập hoặc đến khi Supabase hết hạn token, tùy mốc nào đến trước. Tải lại trang trong cùng tab vẫn giữ phiên. Đăng xuất xóa token và dữ liệu của tài khoản khỏi giao diện.
 
 ## Đăng ký báo HTTP 500
 
@@ -30,6 +30,12 @@ Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng t
 - Mỗi cán bộ chỉ có một phiên bản hiệu lực cho một dự án/kỳ. Người dùng chỉ thay thế phiên bản của mình. Khi admin chọn thay thế cả kỳ, các bản hiện hành của kỳ được lưu vào lịch sử, gồm cả người vắng mặt trong file mới. Xem trước và xác nhận trước khi lưu.
 - NN bao gồm L. Khi có dữ liệu ngày, database tính lại NT/NN từ chi tiết. Các báo cáo tái sử dụng bộ tính hạn mức 40 giờ/tháng và 200 giờ/năm, không chặn vì vượt hạn mức. Lọc dự án chỉ lọc phần hiển thị. Hạn mức và cảnh báo trùng ngày dùng toàn bộ dữ liệu tài khoản có quyền đọc.
 - Tài khoản có thể tải JSON dữ liệu mình được phép đọc. Admin có thêm nhật ký, phân công và hồ sơ. JSON này dùng để đối chiếu và lưu trữ; khôi phục đầy đủ một dự án Supabase dùng công cụ backup/restore của Supabase. Bản cục bộ vẫn có chức năng khôi phục JSON IndexedDB.
+
+## Quản lý người dùng
+
+- **Quản trị hệ thống → Quản lý người dùng** hiển thị hồ sơ và trạng thái. Chọn **Thêm người dùng** để lưu email BIDV, tên và mã cán bộ trước. Người dùng tự đăng ký và xác minh OTP trên website, rồi hồ sơ đăng ký trước được kích hoạt ở lần đăng nhập hoặc tải lại hồ sơ. Người tự đăng ký ngoài danh sách vẫn chờ duyệt.
+- Dùng **Chỉnh sửa và duyệt tài khoản** để sửa họ tên, duyệt hoặc khóa quyền truy cập. Mã cán bộ có thể sửa trước khi có lịch sử OT. Khóa tài khoản lưu lại lịch sử và có thể kích hoạt lại. **Phân công dự án** thêm hoặc gỡ thành viên, còn **Phân quyền dự án** cấp hoặc thu hồi quyền quản trị.
+- **Quản trị dự án → Thành viên dự án** liệt kê thành viên trong dự án được quản lý. Thêm theo mã cán bộ đã kích hoạt hoặc chọn một thành viên để gỡ khỏi dự án. Việc gỡ thành viên giữ lại các bản ghi OT đã lưu.
 
 ## Chọn vai trò và lịch làm việc
 

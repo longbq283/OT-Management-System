@@ -1,16 +1,9 @@
-import { normalizeEmployeeCode } from './client.mjs';
 import { option, projectOptions, table } from './ui.mjs';
 
 export function renderAdmin(state) {
   const projects = projectOptions(state.projects);
-  const people = state.profiles.filter(profile => profile.role === 'user');
-  const accounts = people.map(profile => option(profile.id, profile.full_name + ' · ' + profile.email)).join('');
-  const assignable = state.profiles.filter(profile => profile.employee_code)
-    .map(profile => option(profile.id, profile.employee_code + ' · ' + profile.full_name)).join('');
   const profileName = id => state.profiles.find(profile => profile.id === id)?.full_name || id;
-  const projectName = id => state.projects.find(project => project.id === id)?.code || id;
-  const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Vô hiệu hóa' };
-  const actions = { profile_review: 'Duyệt tài khoản', project_saved: 'Lưu dự án',
+  const actions = { profile_review: 'Quản lý tài khoản', user_invitation_changed: 'Cập nhật đăng ký trước', user_invitation_accepted: 'Kích hoạt đăng ký trước', project_saved: 'Lưu dự án',
     membership_changed: 'Phân công', period_calendar_saved: 'Lưu lịch tháng', period_limits_saved: 'Lưu giới hạn theo ngày', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
     entries_submitted: 'Nhập OT', entries_replaced: 'Thay thế OT' };
   return `<section class="account-card">
@@ -25,30 +18,6 @@ export function renderAdmin(state) {
         </div>
         <label>Mô tả<textarea name="description" maxlength="2000"></textarea></label>
         <button class="primary">Lưu dự án</button>
-      </form>
-    </details>
-    <details><summary>Duyệt tài khoản</summary>
-      ${table(['Họ tên', 'Email', 'Mã đề nghị', 'Mã đã duyệt', 'Trạng thái'], people.map(profile =>
-        [profile.full_name, profile.email, profile.requested_employee_code, profile.employee_code, labels[profile.status]]))}
-      <form id="admin-profile">
-        <div class="account-grid">
-          <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${accounts}</select></label>
-          <label>Mã cán bộ<input name="code" inputmode="numeric" maxlength="8" pattern="[0-9]{1,8}"></label>
-          <label>Trạng thái<select name="active"><option value="true">Duyệt / kích hoạt</option><option value="false">Vô hiệu hóa</option></select></label>
-        </div>
-        <button class="primary">Lưu duyệt tài khoản</button>
-      </form>
-    </details>
-    <details><summary>Phân công dự án</summary>
-      ${table(['Dự án', 'Cán bộ', 'Phân công'], state.memberships.map(member => [
-        projectName(member.project_id), profileName(member.user_id), member.active ? 'Đang phân công' : 'Đã thu hồi']))}
-      <form id="admin-member">
-        <div class="account-grid">
-          <label>Dự án<select name="project" required><option value="">Chọn dự án</option>${projects}</select></label>
-          <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${assignable}</select></label>
-          <label>Phân công<select name="active"><option value="true">Phân công</option><option value="false">Thu hồi</option></select></label>
-        </div>
-        <button class="primary">Lưu phân công</button>
       </form>
     </details>
     ${state.calendars === null ? renderPeriodAdmin(state, state.projects) : ''}
@@ -112,22 +81,10 @@ export function bindAdmin(root, state, submit) {
     for (const name of ['code', 'name', 'description']) projectForm.elements[name].value = item?.[name] ?? '';
     projectForm.elements.active.value = String(!item || item.status === 'active');
   };
-  const reviewForm = root.querySelector('#admin-profile');
-  reviewForm.elements.user.onchange = () => {
-    const user = state.profiles.find(profile => profile.id === reviewForm.elements.user.value);
-    reviewForm.elements.code.value = user?.employee_code || user?.requested_employee_code || '';
-  };
   submit('#admin-project', 'ot_save_project', fields => ({
     p_project: fields.project || null, p_code: fields.code, p_name: fields.name,
     p_description: fields.description, p_active: fields.active === 'true'
   }), 'Đã lưu dự án.');
-  submit('#admin-profile', 'ot_review_profile', fields => ({
-    p_user: fields.user, p_active: fields.active === 'true',
-    p_employee_code: fields.active === 'true' ? normalizeEmployeeCode(fields.code) : null
-  }), 'Đã cập nhật duyệt tài khoản.');
-  submit('#admin-member', 'ot_set_member', fields => ({
-    p_user: fields.user, p_project: fields.project, p_active: fields.active === 'true'
-  }), 'Đã lưu phân công.');
   if (state.projectAdmins !== null) {
     submit('#admin-project-role', 'ot_set_project_admin', fields => ({
       p_project: fields.project, p_user: fields.user, p_active: fields.active === 'true'
