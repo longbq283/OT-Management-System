@@ -30,15 +30,34 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 #register #signup-otp { border-top: 1px solid #dce7e1; margin-top: .25rem; padding-top: .9rem; }
 #register .account-actions { margin-bottom: 0; }
 
-.calendar-months, .calendar-grid { display: grid; gap: .4rem; margin: 1rem 0; }
-.calendar-months { grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); }
-.calendar-months small { display: block; }
-.calendar-grid { grid-template-columns: repeat(7, minmax(5.75rem, 1fr)); overflow-x: auto; }
-.calendar-grid > strong { text-align: center; }
-.calendar-grid .calendar-day { margin: 0; padding: .35rem; border: 1px solid #dce7e1; border-radius: .35rem; }
-.calendar-day[data-day-type="NN"] { background: #eff3fa; }
-.calendar-day[data-day-type="L"] { background: #fff2d9; }
-.calendar-year { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .75rem; }
+#ot-workspace > nav[aria-label="Vai trò làm việc"] {
+  gap: .4rem; padding: .5rem; margin-bottom: .65rem; background: #e6efeb; border-radius: .65rem;
+}
+#refresh-ot { margin-left: auto; }
+.workspace-panes { display: flex; flex-wrap: wrap; gap: .35rem; border-bottom: 1px solid #cbdad3; margin-bottom: 1rem; padding-bottom: .5rem; }
+.workspace-panes button { background: transparent; border-color: transparent; }
+.account-main .workspace-panes button[aria-current="page"] { background: #14634e; border-color: #14634e; color: white; }
+.account-main:has(#ot-workspace:not([hidden])) { width: min(105rem, calc(100% - 2rem)); }
+.pane-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.period-status { font-weight: 700; color: #785525; background: #f9efd8; border-radius: 1rem; padding: .2rem .7rem; }
+.period-status[data-open="true"] { color: #175c41; background: #e1f2e8; }
+.month-legend { display: flex; flex-wrap: wrap; gap: .6rem 1rem; list-style: none; margin: .3rem 0 .7rem; padding: 0; }
+.month-legend span { border-radius: .2rem; padding: .1rem .3rem; font-weight: 700; }
+.month-scroll { max-width: 100%; overflow-x: auto; border: 1px solid #c5d7d1; border-radius: .45rem; margin: .65rem 0; }
+.account-main .month-sheet { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.account-main .month-sheet :is(th, td) { min-width: 2.9rem; padding: .24rem .16rem; text-align: center; border: 0; border-bottom: 1px solid #dce7e1; border-right: 1px solid #dce7e1; }
+.account-main .month-sheet th:first-child { position: sticky; left: 0; z-index: 1; background: #e2eee9; min-width: 6.3rem; padding-inline: .5rem; text-align: left; }
+.month-sheet th small { display: block; font-weight: 500; color: #425d54; }
+.month-sheet [data-day-type="NT"], .month-legend [data-day-type="NT"] { background: #f1f8f5; }
+[data-day-type="NN"] { background: #eaf0f7; }
+[data-day-type="L"] { background: #fff1d5; color: #6a4519; }
+.account-main .month-sheet :is(input, select) { padding: .3rem .12rem; min-height: 2rem; text-align: center; font-variant-numeric: tabular-nums; }
+.account-main .month-sheet select { appearance: none; cursor: pointer; }
+.account-main .month-sheet input[readonly] { background: transparent; border-color: transparent; }
+.month-actions { align-items: center; margin-top: .75rem; }
+.month-actions output { font-weight: 700; font-variant-numeric: tabular-nums; }
+.calendar-year { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: .75rem; margin-top: .65rem; }
 .calendar-year section { padding: .5rem; border: 1px solid #dce7e1; border-radius: .35rem; }
 .calendar-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .15rem; text-align: center; }
 .calendar-mini small { display: block; }
+@media (max-width: 32rem) { #refresh-ot { margin-left: 0; } }

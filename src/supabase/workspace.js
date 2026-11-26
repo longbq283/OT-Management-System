@@ -1,9 +1,9 @@
-import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=4';
-import { renderCalendar } from './calendar.js';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=5';
+import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=5';
 import { bindMigration } from './migration.js?v=4';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportCsv, exportXlsx, getReport, renderReport } from './report.js';
-import { bindUpload, renderUpload } from './upload.js?v=4';
+import { bindUpload, renderUpload } from './upload.js?v=5';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };
@@ -57,7 +57,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         if (!state.roles.includes(next) || state.role === next) return;
         // Replace the previous workspace immediately, including any drafts and private report markup.
         root.innerHTML = '<p>Đang mở giao diện…</p>';
-        Object.assign(state, { role: next, project: 'all', query: '', reportMode: 'monthly', calendarProject: null });
+        Object.assign(state, { role: next, pane: null, project: 'all', query: '', reportMode: 'monthly', calendarProject: null, manualScope: null });
         await refresh();
       });
     }
@@ -74,27 +74,53 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     const open = new Set([...root.querySelectorAll('details[open] > summary')].map(summary => summary.textContent));
     const calendar = canManage && state.projects.length && state.calendars !== null;
     const upload = central || (member && state.projects.length);
-    root.innerHTML = roleNavigation() + (
-      !state.role ? '<section class="account-card"><h2>Chọn vai trò làm việc</h2><p>Chọn một quyền đã được cấp để mở giao diện.</p></section>' :
-      `${calendar ? '<div id="role-calendar"></div>' : ''}
-      ${central ? renderAdmin(state) : state.role === 'project' ? `<section class="account-card">
-        <h2>Quản lý kỳ của dự án</h2>${renderPeriodAdmin(state, state.projects)}</section>` : ''}
-      ${member && !state.projects.length ? '<section class="account-card"><h2>OT cá nhân</h2><p>Bạn chưa được phân công vào dự án nào.</p></section>' : ''}
-      ${renderReport(state, getReport(state))}
-      ${upload ? renderUpload(state, profile) : ''}
-      <section class="account-card"><h2>Sao lưu dữ liệu</h2>
+    if (!state.role) {
+      root.innerHTML = roleNavigation() + '<section class="account-card"><h2>Chọn vai trò làm việc</h2><p>Chọn một quyền đã được cấp để mở giao diện.</p></section>';
+      bindNavigation();
+      return;
+    }
+    const panes = [
+      ...(canManage ? [['calendar', 'Lịch & kỳ nhập', calendar ? '<div id="role-calendar"></div>' :
+        `<section class="account-card"><h2>Lịch và kỳ nhập OT</h2><p>${state.calendars === null
+          ? 'Cần áp dụng migration lịch làm việc trong Supabase.'
+          : 'Chưa có dự án để cấu hình lịch.'}</p>
+          ${state.calendars === null && !central ? renderPeriodAdmin(state, state.projects) : ''}</section>`]] : []),
+      ...(member ? [['entry', 'Nhập OT', upload ? renderUpload(state, profile)
+        : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa được phân công vào dự án nào.</p></section>']] : []),
+      ['report', 'Báo cáo', renderReport(state, getReport(state))],
+      ...(central ? [['management', 'Quản lý', renderAdmin(state)],
+        ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
+      ['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>
         <p>Bản JSON chứa dữ liệu trong phạm vi vai trò đang sử dụng.</p>
         <button type="button" id="export-backup">Tải JSON sao lưu</button>
         ${central ? `<details><summary>Chuyển dữ liệu cũ</summary>
-          <p>Chọn bản sao từ IndexedDB hoặc JSON dùng chung đã tải riêng. Kiểm tra mã trùng, phân công và tổng giờ trước khi chuyển.</p>
+          <p>Chọn bản sao từ IndexedDB hoặc JSON dùng chung đã tải riêng.</p>
           <form id="legacy-migration">
             <label>JSON sao lưu cũ<input type="file" name="file" accept=".json,application/json" required></label>
             <button class="primary">Kiểm tra bản sao và đối chiếu</button>
           </form><div id="migration-preview"></div>
         </details>` : ''}
-      </section>`);
+      </section>`]
+    ];
+    if (!panes.some(([id]) => id === state.pane)) state.pane = panes[0][0];
+    root.innerHTML = roleNavigation() + `<nav class="workspace-panes" aria-label="Chức năng">
+      ${panes.map(([id, label]) => `<button type="button" data-pane="${id}" aria-controls="pane-${id}"
+        aria-current="${state.pane === id ? 'page' : 'false'}">${label}</button>`).join('')}
+    </nav>` + panes.map(([id, , content]) =>
+      `<div id="pane-${id}" data-workspace-pane="${id}" ${state.pane === id ? '' : 'hidden'}>${content}</div>`).join('');
     bindNavigation();
-    if (!state.role) return;
+    for (const button of root.querySelectorAll('[data-pane]')) {
+      button.onclick = () => {
+        if (busy) return;
+        state.pane = button.dataset.pane;
+        notice();
+        for (const item of root.querySelectorAll('[data-pane]')) {
+          const current = item.dataset.pane === state.pane;
+          item.setAttribute('aria-current', current ? 'page' : 'false');
+          root.querySelector('#pane-' + item.dataset.pane).hidden = !current;
+        }
+      };
+    }
     for (const summary of root.querySelectorAll('details > summary')) {
       if (open.has(summary.textContent)) summary.parentElement.open = true;
     }
@@ -137,7 +163,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
           if (alive()) notice(message);
         });
       });
-      bindPeriodAdmin(submit, findPeriod);
+      if (state.calendars === null) bindPeriodAdmin(submit, findPeriod);
       if (central) {
         bindAdmin(root, state, submit);
         bindMigration(root, state, options);
@@ -147,26 +173,57 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
   }
 
   function renderCalendarEditor() {
-    root.querySelector('#role-calendar').innerHTML = renderCalendar(state, findPeriod, findCalendar);
-    on('#calendar-scope', 'submit', event => {
-      event.preventDefault();
-      if (busy) return;
-      const fields = new FormData(event.currentTarget);
-      Object.assign(state, { calendarProject: fields.get('project'), calendarYear: Number(fields.get('year')) });
-      renderCalendarEditor();
-    });
-    for (const button of root.querySelectorAll('[data-calendar-month]')) {
-      button.onclick = () => {
-        state.calendarMonth = Number(button.dataset.calendarMonth);
-        renderCalendarEditor();
-      };
+    root.querySelector('#role-calendar').innerHTML = renderCalendar(state);
+    const scope = root.querySelector('#calendar-scope');
+    scope.onsubmit = event => event.preventDefault();
+    function selectCalendarPeriod() {
+      if (busy || !scope.checkValidity()) return;
+      const fields = new FormData(scope);
+      const project = fields.get('project');
+      const year = Number(fields.get('year'));
+      const month = Number(fields.get('month'));
+      if (state.calendarProject === project && state.calendarYear === year && state.calendarMonth === month) return;
+      Object.assign(state, { calendarProject: project, calendarYear: year, calendarMonth: month });
+      renderCalendarContent();
     }
-    for (const select of root.querySelectorAll('#calendar-days select')) {
-      select.onchange = () => { select.closest('label').dataset.dayType = select.value; };
+    scope.onchange = selectCalendarPeriod;
+    scope.elements.year.oninput = selectCalendarPeriod;
+    renderCalendarContent();
+  }
+
+  function renderCalendarContent() {
+    const content = root.querySelector('#calendar-content');
+    const showYear = Boolean(content.querySelector('details[open]'));
+    content.innerHTML = renderCalendarPeriod(state, findPeriod, findCalendar);
+    content.querySelector('details').open = showYear;
+    const scope = root.querySelector('#calendar-scope');
+    const periodButton = root.querySelector('#calendar-period');
+    if (periodButton) periodButton.onclick = () => {
+      if (!scope.reportValidity()) return;
+      action(async () => {
+        const { calendarProject: project, calendarYear: year, calendarMonth: month } = state;
+        const period = findPeriod(project, year, month);
+        await api.rpc('ot_set_period', { p_project: project, p_year: year, p_month: month,
+          p_open: !period?.is_open, p_expected_revision: period?.revision ?? 0 });
+        if (!alive()) return;
+        await refresh();
+        if (alive()) notice('Đã lưu trạng thái kỳ.');
+      });
+    };
+    for (const select of root.querySelectorAll('#calendar-days select:not(:disabled)')) {
+      select.onchange = () => {
+        const index = select.closest('td').cellIndex;
+        select.closest('td').dataset.dayType = select.value;
+        select.closest('table').tHead.rows[0].cells[index].dataset.dayType = select.value;
+        root.querySelector('#calendar-draft').hidden = false;
+        if (periodButton) periodButton.disabled = true;
+      };
     }
     on('#calendar-days', 'submit', event => {
       event.preventDefault();
+      if (!scope.reportValidity()) return;
       const days = new FormData(event.currentTarget).getAll('day');
+      if (!days.length) return;
       action(async () => {
         const { calendarProject: project, calendarYear: year, calendarMonth: month } = state;
         await api.rpc('ot_set_calendar', {

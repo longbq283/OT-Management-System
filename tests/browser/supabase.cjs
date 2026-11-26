@@ -131,7 +131,9 @@ async function login(page, user) {
 async function fillPeriod(page, selector, project) {
   await page.locator(selector + ' [name=project]').selectOption(project);
   await page.locator(selector + ' [name=year]').fill('2026');
-  await page.locator(selector + ' [name=month]').fill('11');
+  const month = page.locator(selector + ' [name=month]');
+  if (await month.evaluate(el => el.tagName === 'SELECT')) await month.selectOption('11');
+  else await month.fill('11');
 }
 
 async function sleepUntilMessage(page, text) {
@@ -245,16 +247,17 @@ async function run() {
     await operator.getByRole('heading', { name: 'Chọn vai trò làm việc' }).waitFor();
     assert.equal(await operator.locator('[data-role]').count(), 3);
     await operator.locator('[data-role=member]').click();
-    await operator.locator('#manual-ot').waitFor({state: 'attached'});
+    await operator.locator('#manual-scope').waitFor();
     assert.equal(await operator.locator('#admin-profile').count(), 0);
-    assert.deepEqual(await operator.locator('#manual-ot [name=project] option').evaluateAll(items =>
+    assert.deepEqual(await operator.locator('#manual-scope [name=project] option').evaluateAll(items =>
       items.map(item => item.value)), ['', 'pr-b']);
     assert.ok(calls.some(call => call.actor === admin.id && call.endpoint.endsWith('/ot_entries') &&
       call.userFilter === 'eq.' + admin.id));
     await operator.locator('[data-role=project]').click();
-    await operator.getByRole('heading', { name: 'Quản lý kỳ của dự án' }).waitFor();
+    await operator.getByRole('heading', { name: 'Lịch và kỳ nhập OT' }).waitFor();
     assert.equal(await operator.locator('#manual-ot').count(), 0);
     await operator.locator('[data-role=system]').click();
+    await operator.locator('[data-pane=management]').click();
     await operator.getByText('Duyệt tài khoản', { exact: true }).click();
     await operator.locator('#admin-profile [name=user]').selectOption(account.id);
     await operator.locator('#admin-profile button').click();
@@ -266,35 +269,57 @@ async function run() {
     await sleepUntilMessage(operator, 'Đã lưu phân công.');
 
     await login(page, account);
-    await page.getByText('Nhập theo ngày', { exact: true }).click();
-    await fillPeriod(page, '#manual-ot', 'pr-a');
-    await page.locator('#manual-ot [name=days]').fill('1 1200\n2 300');
-    await page.locator('#manual-ot button').click();
-    await sleepUntilMessage(page, 'Kỳ chưa mở');
-    await operator.locator('#calendar-scope [name=project]').selectOption('pr-a');
-    await operator.locator('#calendar-scope [name=year]').fill('2026');
-    await operator.getByRole('button', { name: 'Xem lịch năm' }).click();
-    await operator.locator('[data-calendar-month="11"]').click();
+    await fillPeriod(page, '#manual-scope', 'pr-a');
+    await sleepUntilMessage(page, 'Kỳ đang khóa');
+    assert.equal(await page.locator('#manual-ot [name=duration]').count(), 30);
+    assert.equal(await page.getByLabel('Giờ OT ngày 1', { exact: true }).isEditable(), false);
+    assert.equal(await page.locator('#report-form').isVisible(), false);
+
+    await operator.locator('[data-pane=calendar]').click();
+    await fillPeriod(operator, '#calendar-scope', 'pr-a');
+    await operator.locator('#calendar-scope [name=year]').fill('2028');
+    await operator.locator('#calendar-scope [name=year]').blur();
+    await operator.locator('#calendar-scope [name=month]').selectOption('2');
+    assert.equal(await operator.locator('#calendar-days select').count(), 29);
+    await fillPeriod(operator, '#calendar-scope', 'pr-a');
     await operator.getByText('Xem đủ 12 tháng', { exact: true }).click();
     assert.equal(await operator.locator('.calendar-year section:visible').count(), 12);
     assert.equal(await operator.locator('#calendar-days select').count(), 30);
     assert.equal(await operator.getByLabel('Ngày 1', { exact: true }).inputValue(), 'NN');
     await operator.getByLabel('Ngày 1', { exact: true }).selectOption('NT');
     await operator.getByLabel('Ngày 2', { exact: true }).selectOption('L');
+    assert.equal(await operator.getByRole('button', { name: 'Mở kỳ', exact: true }).count(), 0);
     await operator.getByRole('button', { name: 'Lưu lịch tháng' }).click();
     await sleepUntilMessage(operator, 'Đã lưu lịch làm việc tháng 11/2026.');
-    await operator.getByText('Mở và khóa kỳ nhập OT', { exact: true }).click();
-    await fillPeriod(operator, '#admin-period', 'pr-a');
-    await operator.locator('#admin-period button').click();
+    await operator.getByRole('button', { name: 'Mở kỳ', exact: true }).click();
     await sleepUntilMessage(operator, 'Đã lưu trạng thái kỳ.');
+    assert.equal(await operator.getByLabel('Ngày 1', { exact: true }).isDisabled(), true);
+
     await page.locator('#refresh-ot').click();
     await sleepUntilMessage(page, 'Đã tải dữ liệu mới nhất.');
-    await fillPeriod(page, '#manual-ot', 'pr-a');
-    await page.locator('#manual-ot [name=days]').fill('1 1200\n2 300');
+    const dayOne = page.getByLabel('Giờ OT ngày 1', { exact: true });
+    const dayTwo = page.getByLabel('Giờ OT ngày 2', { exact: true });
+    assert.equal(await dayOne.getAttribute('readonly'), null);
+    assert.equal(await page.locator('#manual-ot tr').nth(1).locator('td').nth(1).innerText(), 'L');
+    await dayOne.fill('25');
+    await page.locator('#manual-ot button').click();
+    await sleepUntilMessage(page, 'Ngày 1 cần số giờ từ 0 đến 24');
+    await dayOne.evaluate(input => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData('text/plain', '20\t5,0');
+      input.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    });
+    assert.equal(await dayTwo.inputValue(), '5,0');
+    await sleepUntilMessage(page, 'Tổng OT 25 giờ');
+    await page.locator('[data-pane=report]').click();
+    assert.equal(await page.locator('#manual-ot').isVisible(), false);
+    await page.locator('[data-pane=entry]').click();
+    assert.equal(await dayOne.inputValue(), '20');
     await page.locator('#manual-ot button').click();
     await page.locator('#commit-ot input').check();
     await page.locator('#commit-ot button.primary').click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
+    assert.equal(await dayTwo.inputValue(), '5');
 
     await page.getByText('Nhập từ Excel', { exact: true }).click();
     await fillPeriod(page, '#excel-ot', 'pr-b');
@@ -310,6 +335,7 @@ async function run() {
     await page.locator('#commit-ot input').check();
     await page.locator('#commit-ot button.primary').click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
+    await page.locator('[data-pane=report]').click();
     const report = '#report-form';
     await page.locator(report + ' [name=year]').fill('2026');
     await page.locator(report + ' [name=month]').fill('11');
@@ -319,9 +345,11 @@ async function run() {
     const reportText = await page.locator('#report-form').locator('..').innerText();
     assert.match(reportText, /50/);
     assert.match(reportText, /vượt 10 giờ/);
+    await page.locator('[data-pane=backup]').click();
     const [backup] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     assert.match(backup.suggestedFilename(), /ot-supabase-backup/);
     assert.equal(await page.locator('#admin-project').count(), 0);
+    await operator.locator('[data-pane=management]').click();
     const grantForm = operator.locator('#admin-project-role');
     await operator.getByText('Cấp quyền quản trị dự án', { exact: true }).click();
     await grantForm.locator('[name=project]').selectOption('pr-a');
@@ -331,15 +359,13 @@ async function run() {
 
     await page.locator('#refresh-ot').click();
     await page.locator('[data-role=project]').click();
-    await page.getByRole('heading', { name: 'Quản lý kỳ của dự án', exact: true }).waitFor();
-    await page.getByText('Mở và khóa kỳ nhập OT', { exact: true }).click();
-    assert.deepEqual(await page.locator('#admin-period [name=project] option').evaluateAll(items =>
-      items.map(item => item.value)), ['', 'pr-a']);
+    await page.getByRole('heading', { name: 'Lịch và kỳ nhập OT', exact: true }).waitFor();
+    assert.deepEqual(await page.locator('#calendar-scope [name=project] option').evaluateAll(items =>
+      items.map(item => item.value)), ['pr-a']);
     assert.equal(await page.locator('#admin-project-role').count(), 0);
     assert.equal(await page.locator('#admin-profile').count(), 0);
-    await fillPeriod(page, '#admin-period', 'pr-a');
-    await page.locator('#admin-period [name=active]').selectOption('false');
-    await page.locator('#admin-period button').click();
+    await fillPeriod(page, '#calendar-scope', 'pr-a');
+    await page.getByRole('button', { name: 'Khóa kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
 
     await grantForm.locator('[name=project]').selectOption('pr-a');
@@ -355,7 +381,7 @@ async function run() {
     assert.equal(await page.locator('#ot-workspace').innerText(), '');
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, calendar and locked period, manual and Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, resend, error handling, logout, three selectable roles, monthly OT sheet, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

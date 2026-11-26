@@ -1,61 +1,55 @@
 import { readExcel } from '../import/reader.mjs';
-import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, previewSheet } from '../import/engine.mjs';
+import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, parseMinutes, previewSheet } from '../import/engine.mjs';
 import { normalizeEmployeeCode } from './client.mjs';
 import { fromDatabase, prepareRows } from './records.mjs';
+import { defaultDays, monthLegend, monthOptions, renderMonthGrid } from './month-grid.js';
 import { buildOTReport } from '../domain/reports.mjs';
 import { esc, hours, option, projectOptions, table } from './ui.mjs';
 
-export function periodFields(state, { all = false } = {}) {
+function periodFields(state, selection = state) {
+  const selected = state.projects.filter(project => project.status === 'active');
   return `<div class="account-grid">
-    <label>Dự án<select name="project" required><option value="">Chọn dự án</option>${projectOptions(
-      state.projects.filter(project => all || project.status === 'active'))}</select></label>
-    <label>Năm<input name="year" type="number" min="2026" max="2100" value="${Math.max(2026, state.year)}" required></label>
-    <label>Tháng<input name="month" type="number" min="1" max="12" value="${state.month}" required></label>
+    <label>Dự án<select name="project" required>${option('', 'Chọn dự án', selection.project)}
+      ${projectOptions(selected, selection.project)}</select></label>
+    <label>Năm<input name="year" type="number" min="2026" max="2100" value="${Math.max(2026, selection.year)}" required></label>
+    <label>Tháng<select name="month">${monthOptions(selection.month)}</select></label>
   </div>`;
 }
 
 export function renderUpload(state, profile) {
   const admin = state.role === 'system';
-  const configured = state.calendars !== null;
   if (!admin && !profile.employee_code) return '';
+  const excel = `<form id="excel-ot">${periodFields(state)}
+    <label>File Excel<input name="file" type="file" accept=".xlsx,.xls" required></label>
+    <button class="primary">Đọc file và kiểm tra ánh xạ</button>
+  </form><div id="workbook-mapping"></div>`;
   return `<section class="account-card">
-    <h2>Nhập OT</h2>
-    <p>Chọn dự án và kỳ đang mở. Giờ được lưu sau khi xem trước và xác nhận.</p>
-    ${!admin && profile.employee_code ? `<details><summary>Nhập theo ngày</summary>
-      <form id="manual-ot">${periodFields(state)}
-        <label>${configured ? 'Ngày và số phút OT' : 'Ngày, loại và số phút OT'}<textarea name="days" required maxlength="2000"
-          placeholder="${configured ? '1 120' : '1 NT 120'}"></textarea></label>
-        <p class="account-muted">${configured ? 'Mỗi dòng gồm ngày trong tháng và số phút, ví dụ 1 120. Loại ngày lấy từ lịch đã lưu.'
-          : 'Mỗi dòng gồm ngày trong tháng, loại NT/NN/L và số phút, ví dụ 1 NT 120.'}</p>
-        <button class="primary">Xem trước giờ nhập</button>
-      </form>
-    </details>` : ''}
-    <details><summary>Nhập từ Excel</summary>
-      <form id="excel-ot">${periodFields(state)}
-        ${admin ? '<p>Nhập toàn bộ kỳ cho người được phân công.</p>' : ''}
-        <label>File Excel<input name="file" type="file" accept=".xlsx,.xls" required></label>
-        <button class="primary">Đọc file và kiểm tra ánh xạ</button>
-      </form>
-      <div id="workbook-mapping"></div>
-    </details>
+    <h2>${admin ? 'Nhập OT từ Excel' : 'Nhập OT cá nhân'}</h2>
+    ${!admin ? `<form id="manual-scope">${periodFields(state, state.manualScope ?? state)}</form>
+      <div id="manual-sheet"></div>` : ''}
+    ${admin ? excel : `<details><summary>Nhập từ Excel</summary>${excel}</details>`}
     <div id="upload-preview" aria-live="polite"></div>
   </section>`;
 }
 
-export function readManual(text, profile, year, month, calendar) {
-  const days = text.trim().split(/\r?\n/).filter(line => line.trim()).map(line => {
-    const match = line.trim().match(/^(\d{1,2})(?:\s+(NT|NN|L))?\s+(\d{1,4})$/i);
-    if (!match || (!calendar && !match[2])) throw Error(calendar
-      ? 'Mỗi dòng cần có ngày và số phút.' : 'Mỗi dòng cần có ngày, loại NT/NN/L và số phút.');
-    const [, day, type, minutes] = match;
-    const dayType = calendar ? calendar[Number(day) - 1] : type.toUpperCase();
-    if (!dayType) throw Error('Ngày ' + day + ' không thuộc lịch của tháng đã chọn.');
-    return {
-      date: year + '-' + String(month).padStart(2, '0') + '-' + day.padStart(2, '0'),
-      type: dayType, minutes: Number(minutes)
-    };
+function durationMinutes(value) {
+  const result = parseMinutes({ v: value.trim() });
+  return result.error || result.minutes > 1440 ? null : result.minutes;
+}
+
+function durationValue(minutes) {
+  return minutes % 60 ? Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0') : String(minutes / 60);
+}
+
+function dailyRecord(inputs, types, profile, { year, month }) {
+  const days = inputs.flatMap((input, index) => {
+    const minutes = durationMinutes(input.value);
+    const day = index + 1;
+    if (minutes === null) throw Error('Ngày ' + day + ' cần số giờ từ 0 đến 24. Ví dụ 1,5 hoặc 1:30.');
+    return minutes ? [{ date: year + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0'),
+      type: types[index], minutes }] : [];
   });
-  if (!days.length) throw Error('Vui lòng nhập ít nhất một ngày OT.');
+  if (!days.length) throw Error('Nhập giờ OT cho ít nhất một ngày.');
   const ntMinutes = days.filter(day => day.type === 'NT').reduce((sum, day) => sum + day.minutes, 0);
   const nnMinutes = days.filter(day => day.type !== 'NT').reduce((sum, day) => sum + day.minutes, 0);
   return { employeeId: profile.employee_code, name: profile.full_name, source: 'daily',
@@ -185,16 +179,90 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     };
   }
 
-  const manual = root.querySelector('#manual-ot');
-  if (manual) manual.onsubmit = event => {
-    event.preventDefault();
-    action(async () => {
+  const picker = root.querySelector('#manual-scope');
+  if (picker) {
+    const sheet = root.querySelector('#manual-sheet');
+    function buildSheet(selection) {
+      const { project, year, month } = selection;
       preview.replaceChildren();
-      const fields = Object.fromEntries(new FormData(manual));
-      const scope = context(fields);
-      showPreview(scope, [readManual(fields.days, profile, scope.year, scope.month, scope.calendar)]);
-    });
-  };
+      if (!project) {
+        sheet.innerHTML = '<p class="account-muted">Chọn dự án để hiện bảng ngày trong tháng.</p>';
+        return;
+      }
+      const period = findPeriod(project, year, month);
+      const saved = findCalendar(project, year, month);
+      const types = saved ?? defaultDays(year, month);
+      const editable = Boolean(period?.is_open && saved);
+      const current = state.entries.find(entry => entry.status === 'active' && entry.projectId === project &&
+        entry.year === year && entry.month === month && entry.employeeId === profile.employee_code);
+      const byDay = new Map(current?.days.map(day => [Number(day.date.slice(-2)), day.minutes]));
+      sheet.innerHTML = `<form id="manual-ot">
+        ${monthLegend()}
+        <p class="account-muted">${editable ? 'Nhập số giờ, ví dụ 1,5 hoặc 1:30. Ô trống tính 0 giờ.'
+          : !period?.is_open ? 'Kỳ đang khóa. Bạn có thể xem bảng tháng.'
+            : 'Kỳ chưa có lịch đã lưu. Liên hệ quản trị viên để cấu hình.'}</p>
+        ${current?.source === 'summary' ? '<p class="account-muted">Kỳ này đã có bản tổng hợp. Nếu lưu bảng ngày mới, bản tổng hợp sẽ được thay thế.</p>' : ''}
+        ${renderMonthGrid(year, month, types, {
+          label: 'Giờ OT tháng ' + month + '/' + year,
+          rows: [
+            { label: 'Loại ngày', cell: type => esc(type) },
+            { label: 'Số giờ OT', cell: (_, day) => `<input name="duration" inputmode="decimal" autocomplete="off"
+              aria-label="Giờ OT ngày ${day}" value="${byDay.has(day) ? durationValue(byDay.get(day)) : ''}" ${editable ? '' : 'readonly'}>` }
+          ]
+        })}
+        <div class="account-actions month-actions"><output aria-live="polite" id="manual-total"></output>
+          ${editable ? '<button class="primary">Xem trước</button>' : ''}
+        </div>
+      </form>`;
+      const form = sheet.querySelector('form');
+      const inputs = [...form.querySelectorAll('input[name=duration]')];
+      function updateTotal() {
+        const minutes = inputs.map(input => durationMinutes(input.value));
+        form.querySelector('#manual-total').textContent = minutes.includes(null) ? 'Kiểm tra số giờ đã nhập'
+          : 'Tổng OT ' + hours(minutes.reduce((sum, item) => sum + item, 0)) + ' giờ';
+        preview.replaceChildren();
+      }
+      updateTotal();
+      if (!editable) return;
+      form.oninput = updateTotal;
+      form.onpaste = event => {
+        const first = inputs.indexOf(event.target);
+        const text = event.clipboardData?.getData('text/plain').replace(/\r?\n$/, '');
+        if (first < 0 || !text?.includes('\t') || /[\r\n]/.test(text)) return;
+        event.preventDefault();
+        const cells = text.split('\t');
+        if (first + cells.length > inputs.length) {
+          notice('Dãy giờ dán vượt quá số ngày còn lại trong tháng.', true);
+          return;
+        }
+        cells.forEach((value, offset) => { inputs[first + offset].value = value; });
+        updateTotal();
+      };
+      form.onsubmit = event => {
+        event.preventDefault();
+        if (!picker.reportValidity()) return;
+        action(() => {
+          const scope = context(selection);
+          showPreview(scope, [dailyRecord(inputs, types, profile, scope)]);
+        });
+      };
+    }
+    function selectPeriod() {
+      if (picker.elements.project.value && !picker.checkValidity()) return;
+      const fields = new FormData(picker);
+      const project = fields.get('project');
+      const year = Number(fields.get('year'));
+      const month = Number(fields.get('month'));
+      if (sheet.firstElementChild && state.manualScope?.project === project &&
+        state.manualScope.year === year && state.manualScope.month === month) return;
+      state.manualScope = { project, year, month };
+      buildSheet(state.manualScope);
+    }
+    picker.onchange = selectPeriod;
+    picker.elements.year.oninput = selectPeriod;
+    picker.onsubmit = event => event.preventDefault();
+    selectPeriod();
+  }
   const excel = root.querySelector('#excel-ot');
   const mapping = root.querySelector('#workbook-mapping');
   excel.onchange = () => { mapping.replaceChildren(); preview.replaceChildren(); };

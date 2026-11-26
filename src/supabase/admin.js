@@ -65,7 +65,7 @@ export function renderAdmin(state) {
         <button class="primary">Lưu phân công</button>
       </form>
     </details>
-    ${renderPeriodAdmin(state, state.projects)}
+    ${state.calendars === null ? renderPeriodAdmin(state, state.projects) : ''}
     <details><summary>Nhật ký quản trị</summary>${table(['Thời điểm', 'Người thực hiện', 'Thao tác', 'Chi tiết'],
       state.audit.slice(0, 100).map(event => [
         new Date(event.occurred_at).toLocaleString('vi-VN'), profileName(event.actor_id), actions[event.action] || event.action,
