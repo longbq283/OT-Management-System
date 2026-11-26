@@ -1,12 +1,14 @@
-import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=5';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=6';
 import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=5';
 import { bindMigration } from './migration.js?v=4';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportCsv, exportXlsx, getReport, renderReport } from './report.js';
-import { bindUpload, renderUpload } from './upload.js?v=5';
+import { bindUpload, renderUpload } from './upload.js?v=6';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };
+const roleActions = { system: 'Quản lý hệ thống', project: 'Cấu hình lịch và kỳ của dự án', member: 'Nhập giờ OT của tôi' };
+const roleRoutes = new Map([['#nhap-ot', 'member'], ['#cau-hinh-du-an', 'project']]);
 const optionalTable = promise => Promise.resolve(promise).catch(error => {
   if (error.status === 404 && error.code === 'PGRST205') return null;
   throw error;
@@ -20,6 +22,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
   const uploads = new AbortController();
   let closed = false;
   let busy = false;
+  let requestedRole = roleRoutes.get(location.hash);
   const alive = () => !closed && api.userId === profile.id;
   const findPeriod = (project, year, month) => state.periodIndex.get(periodKey(project, year, month));
   const findCalendar = (project, year, month) => state.calendarIndex.get(periodKey(project, year, month))?.days;
@@ -75,7 +78,11 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     const calendar = canManage && state.projects.length && state.calendars !== null;
     const upload = central || (member && state.projects.length);
     if (!state.role) {
-      root.innerHTML = roleNavigation() + '<section class="account-card"><h2>Chọn vai trò làm việc</h2><p>Chọn một quyền đã được cấp để mở giao diện.</p></section>';
+      root.innerHTML = `<section class="account-card"><h2>Chọn vai trò làm việc</h2>
+        <div class="workspace-role-options">${state.roles.map(role => `<button type="button" data-role="${role}">
+          <strong>${roleNames[role]}</strong><span>${roleActions[role]}</span></button>`).join('')}</div>
+        <button type="button" id="refresh-ot">Tải lại quyền</button>
+      </section>`;
       bindNavigation();
       return;
     }
@@ -86,7 +93,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
           : 'Chưa có dự án để cấu hình lịch.'}</p>
           ${state.calendars === null && !central ? renderPeriodAdmin(state, state.projects) : ''}</section>`]] : []),
       ...(member ? [['entry', 'Nhập OT', upload ? renderUpload(state, profile)
-        : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa được phân công vào dự án nào.</p></section>']] : []),
+        : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa có dự án được phân công. Quản trị hệ thống cần thêm bạn vào danh sách thành viên của dự án.</p></section>']] : []),
       ['report', 'Báo cáo', renderReport(state, getReport(state))],
       ...(central ? [['management', 'Quản lý', renderAdmin(state)],
         ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
@@ -258,6 +265,11 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       ...(grants?.length ? ['project'] : []),
       ...(own.employee_code ? ['member'] : [])
     ];
+    if (requestedRole) {
+      if (state.roles.includes(requestedRole)) state.role = requestedRole;
+      else notice('Tài khoản chưa có quyền ' + roleNames[requestedRole] + '.', true);
+      requestedRole = null;
+    }
     if (!state.roles.includes(state.role)) state.role = state.roles.length === 1 ? state.roles[0] : null;
     if (!state.role) {
       render();
@@ -288,8 +300,19 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     if (!projects.some(project => project.id === state.project)) state.project = 'all';
     if (!projects.some(project => project.id === state.calendarProject)) state.calendarProject = projects[0]?.id;
     const byPeriod = items => new Map(items.map(item => [periodKey(item.project_id, item.year, item.month), item]));
+    const calendarIndex = byPeriod(calendars ?? []);
+    if (member && !state.manualScope) {
+      const active = projects.filter(project => project.status === 'active');
+      const activeIds = new Set(active.map(project => project.id));
+      const openPeriods = periods.filter(period => period.is_open && period.year >= 2026 && activeIds.has(period.project_id) &&
+        calendarIndex.has(periodKey(period.project_id, period.year, period.month)));
+      const current = openPeriods.find(period => period.year === today.getFullYear() && period.month === today.getMonth() + 1);
+      const selected = current ?? openPeriods.sort((a, b) => b.year - a.year || b.month - a.month)[0];
+      if (selected) state.manualScope = { project: selected.project_id, year: selected.year, month: selected.month };
+      else if (active.length === 1) state.manualScope = { project: active[0].id, year: state.year, month: state.month };
+    }
     Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit,
-      projectAdmins, calendars, calendarIndex: byPeriod(calendars ?? []), periodIndex: byPeriod(periods) });
+      projectAdmins, calendars, calendarIndex, periodIndex: byPeriod(periods) });
     render();
   }
 

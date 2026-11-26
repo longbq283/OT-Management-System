@@ -84,11 +84,15 @@ async function routeRequest(route) {
     return send(null);
   }
   if (endpoint.endsWith('/ot_set_calendar')) {
-    assert.equal(actor, admin);
+    assert.ok(actor === admin || projectAdmins.some(grant => grant.active &&
+      grant.project_id === fields.p_project && grant.user_id === actor.id));
     const period = periods.find(row => row.project_id === fields.p_project);
     assert.equal(fields.p_expected_revision, period.revision);
     assert.equal(period.is_open, false);
-    calendars.push({ project_id: fields.p_project, year: fields.p_year, month: fields.p_month, days: fields.p_days });
+    const existing = calendars.find(calendar => calendar.project_id === fields.p_project &&
+      calendar.year === fields.p_year && calendar.month === fields.p_month);
+    if (existing) existing.days = fields.p_days;
+    else calendars.push({ project_id: fields.p_project, year: fields.p_year, month: fields.p_month, days: fields.p_days });
     return send(++period.revision);
   }
   if (endpoint.endsWith('/ot_set_period')) {
@@ -268,7 +272,11 @@ async function run() {
     await operator.locator('#admin-member button').click();
     await sleepUntilMessage(operator, 'Đã lưu phân công.');
 
+    await page.goto(base + '/kiem-tra-tai-khoan.html#nhap-ot');
     await login(page, account);
+    await page.getByRole('heading', { name: 'Nhập giờ OT trực tiếp', exact: true }).waitFor();
+    assert.equal(await page.locator('#manual-scope [name=project]').inputValue(), 'pr-b');
+    assert.equal(await page.getByLabel('Giờ OT ngày 1', { exact: true }).isEditable(), true);
     await fillPeriod(page, '#manual-scope', 'pr-a');
     await sleepUntilMessage(page, 'Kỳ đang khóa');
     assert.equal(await page.locator('#manual-ot [name=duration]').count(), 30);
@@ -357,8 +365,10 @@ async function run() {
     await grantForm.getByRole('button').click();
     await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
 
-    await page.locator('#refresh-ot').click();
-    await page.locator('[data-role=project]').click();
+    await page.locator('#logout').click();
+    await sleepUntilMessage(page, 'Đã đăng xuất');
+    await page.goto(base + '/kiem-tra-tai-khoan.html#cau-hinh-du-an');
+    await login(page, account);
     await page.getByRole('heading', { name: 'Lịch và kỳ nhập OT', exact: true }).waitFor();
     assert.deepEqual(await page.locator('#calendar-scope [name=project] option').evaluateAll(items =>
       items.map(item => item.value)), ['pr-a']);
@@ -366,6 +376,13 @@ async function run() {
     assert.equal(await page.locator('#admin-profile').count(), 0);
     await fillPeriod(page, '#calendar-scope', 'pr-a');
     await page.getByRole('button', { name: 'Khóa kỳ', exact: true }).click();
+    await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
+    await page.getByLabel('Ngày 3', { exact: true }).selectOption('L');
+    await page.getByRole('button', { name: 'Lưu lịch tháng' }).click();
+    await sleepUntilMessage(page, 'Đã lưu lịch làm việc tháng 11/2026.');
+    assert.ok(calls.some(call => call.actor === account.id && call.endpoint.endsWith('/ot_set_calendar') &&
+      call.fields.p_project === 'pr-a' && call.fields.p_days[2] === 'L'));
+    await page.getByRole('button', { name: 'Mở kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
 
     await grantForm.locator('[name=project]').selectOption('pr-a');
@@ -375,6 +392,11 @@ async function run() {
     await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
     await page.locator('#refresh-ot').click();
     await page.locator('[data-role=project]').waitFor({ state: 'detached' });
+    assert.equal(await page.locator('#calendar-scope').count(), 0);
+    await page.reload();
+    await login(page, account);
+    await sleepUntilMessage(page, 'Tài khoản chưa có quyền Quản trị dự án.');
+    assert.equal(await page.locator('#calendar-scope').count(), 0);
 
     await page.locator('#logout').click();
     await sleepUntilMessage(page, 'Đã đăng xuất');

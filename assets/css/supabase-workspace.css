@@ -61,3 +61,8 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .calendar-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .15rem; text-align: center; }
 .calendar-mini small { display: block; }
 @media (max-width: 32rem) { #refresh-ot { margin-left: 0; } }
+
+.workspace-role-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .65rem; margin-bottom: 1rem; }
+.account-main .workspace-role-options button { display: grid; gap: .2rem; padding: .8rem 1rem; text-align: left; }
+.workspace-role-options button:hover { background: #edf6f2; }
+.workspace-role-options span { color: #456256; }

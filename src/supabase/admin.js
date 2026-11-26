@@ -41,7 +41,7 @@ export function renderAdmin(state) {
     </details>
     <details><summary>Cấp quyền quản trị dự án</summary>
       ${state.projectAdmins === null ? '<p>Áp dụng migration quản trị dự án trong Supabase để dùng chức năng này.</p>' : `
-        <p class="account-muted">Duyệt tài khoản trước, sau đó cấp quyền quản trị theo từng dự án.</p>
+        <p class="account-muted">Duyệt tài khoản trước khi cấp quyền. Người được cấp quyền chọn Quản trị dự án sau khi đăng nhập để tự sửa lịch và mở hoặc khóa kỳ.</p>
         ${table(['Dự án', 'Cán bộ', 'Quyền'], state.projectAdmins.map(grant => [
           projectName(grant.project_id), profileName(grant.user_id), grant.active ? 'Quản trị dự án' : 'Đã thu hồi']))}
         <form id="admin-project-role">

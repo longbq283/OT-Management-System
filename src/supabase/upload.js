@@ -24,7 +24,7 @@ export function renderUpload(state, profile) {
     <button class="primary">Đọc file và kiểm tra ánh xạ</button>
   </form><div id="workbook-mapping"></div>`;
   return `<section class="account-card">
-    <h2>${admin ? 'Nhập OT từ Excel' : 'Nhập OT cá nhân'}</h2>
+    <h2>${admin ? 'Nhập OT từ Excel' : 'Nhập giờ OT trực tiếp'}</h2>
     ${!admin ? `<form id="manual-scope">${periodFields(state, state.manualScope ?? state)}</form>
       <div id="manual-sheet"></div>` : ''}
     ${admin ? excel : `<details><summary>Nhập từ Excel</summary>${excel}</details>`}
