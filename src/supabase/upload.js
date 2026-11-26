@@ -1,8 +1,8 @@
 import { readExcel } from '../import/reader.mjs';
-import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, parseMinutes, previewSheet } from '../import/engine.mjs';
+import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, previewSheet } from '../import/engine.mjs';
 import { normalizeEmployeeCode } from './client.mjs';
 import { fromDatabase, prepareRows } from './records.mjs';
-import { defaultDays, monthLegend, monthOptions, renderMonthGrid } from './month-grid.js';
+import { defaultDays, durationMinutes, durationValue, monthLegend, monthOptions, renderMonthGrid } from './month-grid.js?v=7';
 import { buildOTReport } from '../domain/reports.mjs';
 import { esc, hours, option, projectOptions, table } from './ui.mjs';
 
@@ -30,15 +30,6 @@ export function renderUpload(state, profile) {
     ${admin ? excel : `<details><summary>Nhập từ Excel</summary>${excel}</details>`}
     <div id="upload-preview" aria-live="polite"></div>
   </section>`;
-}
-
-function durationMinutes(value) {
-  const result = parseMinutes({ v: value.trim() });
-  return result.error || result.minutes > 1440 ? null : result.minutes;
-}
-
-function durationValue(minutes) {
-  return minutes % 60 ? Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0') : String(minutes / 60);
 }
 
 function dailyRecord(inputs, types, profile, { year, month }) {
@@ -70,8 +61,8 @@ function mappingFields(sheet, mapping, dailyOnly) {
   </div>`;
 }
 
-function renderMapping(target, book, onReview, { year, month, calendar, batch }) {
-  const dailyOnly = Boolean(calendar && !batch);
+function renderMapping(target, book, onReview, { year, month, calendar, batch, limits }) {
+  const dailyOnly = Boolean(calendar && (!batch || limits));
   target.innerHTML = `<form id="excel-mapping">
     <label>Sheet<select name="sheet">${book.sheets.map((sheet, index) => option(index, sheet.name)).join('')}</select></label>
     <div id="mapping-hint"></div><div id="mapping-fields"></div>
@@ -112,7 +103,7 @@ function renderMapping(target, book, onReview, { year, month, calendar, batch })
   };
 }
 
-export function bindUpload(root, state, profile, { action, findPeriod, findCalendar, api, alive, refresh, notice, uploadSignal }) {
+export function bindUpload(root, state, profile, { action, findPeriod, findCalendar, findLimits, api, alive, refresh, notice, uploadSignal }) {
   const preview = root.querySelector('#upload-preview');
   if (!preview) return;
 
@@ -124,7 +115,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     if (!period?.is_open) throw Error('Kỳ chưa mở. Liên hệ quản trị viên để mở kỳ nhập.');
     const calendar = findCalendar(project, year, month);
     if (state.calendars !== null && !calendar) throw Error('Kỳ chưa có lịch làm việc. Liên hệ quản trị viên.');
-    return { year, month, project, period, batch, calendar };
+    return { year, month, project, period, batch, calendar, limits: findLimits(project, year, month) };
   }
 
   function showPreview(scope, source, warnings = []) {
@@ -134,6 +125,14 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     const seenErrors = records.flatMap(record => record.errors ?? []);
     if (seenErrors.length) throw Error([...new Set(seenErrors)].slice(0, 10).join(' '));
     const rows = prepareRows(records, scope);
+    if (scope.limits) {
+      for (const row of rows) {
+        for (const day of row.days) {
+          const limit = scope.limits[Number(day.date.slice(-2)) - 1];
+          if (day.minutes > limit) throw Error('Ngày ' + day.date.slice(-2) + ' vượt giới hạn ' + hours(limit) + ' giờ OT.');
+        }
+      }
+    }
     const previous = row => row.status === 'active' && row.projectId === scope.project && row.year === scope.year &&
       row.month === scope.month && (scope.batch || row.employeeId === profile.employee_code);
     const replace = state.entries.some(previous);
@@ -192,6 +191,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       const period = findPeriod(project, year, month);
       const saved = findCalendar(project, year, month);
       const types = saved ?? defaultDays(year, month);
+      const limits = findLimits(project, year, month);
       const editable = Boolean(period?.is_open && saved);
       const current = state.entries.find(entry => entry.status === 'active' && entry.projectId === project &&
         entry.year === year && entry.month === month && entry.employeeId === profile.employee_code);
@@ -206,6 +206,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
           label: 'Giờ OT tháng ' + month + '/' + year,
           rows: [
             { label: 'Loại ngày', cell: type => esc(type) },
+            ...(limits ? [{ label: 'Giới hạn (giờ)', cell: (_, day) => hours(limits[day - 1]) }] : []),
             { label: 'Số giờ OT', cell: (_, day) => `<input name="duration" inputmode="decimal" autocomplete="off"
               aria-label="Giờ OT ngày ${day}" value="${byDay.has(day) ? durationValue(byDay.get(day)) : ''}" ${editable ? '' : 'readonly'}>` }
           ]
@@ -218,7 +219,12 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       const inputs = [...form.querySelectorAll('input[name=duration]')];
       function updateTotal() {
         const minutes = inputs.map(input => durationMinutes(input.value));
-        form.querySelector('#manual-total').textContent = minutes.includes(null) ? 'Kiểm tra số giờ đã nhập'
+        const invalidDay = minutes.findIndex((value, index) => value === null || (limits && value > limits[index]));
+        for (const [index, input] of inputs.entries()) {
+          if (minutes[index] === null || (limits && minutes[index] > limits[index])) input.setAttribute('aria-invalid', 'true');
+          else input.removeAttribute('aria-invalid');
+        }
+        form.querySelector('#manual-total').textContent = invalidDay !== -1 ? 'Kiểm tra số giờ ngày ' + (invalidDay + 1)
           : 'Tổng OT ' + hours(minutes.reduce((sum, item) => sum + item, 0)) + ' giờ';
         preview.replaceChildren();
       }

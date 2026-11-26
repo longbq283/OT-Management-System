@@ -1,14 +1,16 @@
-import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin } from './admin.js?v=6';
-import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=5';
-import { bindMigration } from './migration.js?v=4';
+import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=7';
+import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
+import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
+import { bindMigration } from './migration.js?v=7';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportCsv, exportXlsx, getReport, renderReport } from './report.js';
-import { bindUpload, renderUpload } from './upload.js?v=6';
+import { bindUpload, renderUpload } from './upload.js?v=7';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };
 const roleActions = { system: 'Quản lý hệ thống', project: 'Cấu hình lịch và kỳ của dự án', member: 'Nhập giờ OT của tôi' };
 const roleRoutes = new Map([['#nhap-ot', 'member'], ['#cau-hinh-du-an', 'project']]);
+const noProjectRole = '<span class="account-muted project-role-state">Quản trị dự án · Chưa được cấp quyền</span>';
 const optionalTable = promise => Promise.resolve(promise).catch(error => {
   if (error.status === 404 && error.code === 'PGRST205') return null;
   throw error;
@@ -26,6 +28,8 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
   const alive = () => !closed && api.userId === profile.id;
   const findPeriod = (project, year, month) => state.periodIndex.get(periodKey(project, year, month));
   const findCalendar = (project, year, month) => state.calendarIndex.get(periodKey(project, year, month))?.days;
+  const findLimits = (project, year, month) => state.calendarIndex.get(periodKey(project, year, month))?.limit_minutes
+    ?? (state.limitsEnabled ? findCalendar(project, year, month)?.map(defaultLimit) : undefined);
   const on = (selector, event, handler) => root.querySelector(selector).addEventListener(event, handler);
 
   async function action(run) {
@@ -50,6 +54,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
   function roleNavigation() {
     return `<nav class="account-actions" aria-label="Vai trò làm việc">${state.roles.map(role =>
       `<button type="button" data-role="${role}" aria-current="${state.role === role}">${roleNames[role]}</button>`).join('')}
+      ${state.roles.includes('project') ? '' : noProjectRole}
       <button type="button" id="refresh-ot">Tải lại dữ liệu</button></nav>`;
   }
 
@@ -81,6 +86,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       root.innerHTML = `<section class="account-card"><h2>Chọn vai trò làm việc</h2>
         <div class="workspace-role-options">${state.roles.map(role => `<button type="button" data-role="${role}">
           <strong>${roleNames[role]}</strong><span>${roleActions[role]}</span></button>`).join('')}</div>
+        ${state.roles.includes('project') ? '' : '<p>' + noProjectRole + '. Quản trị hệ thống có thể cấp tại mục Phân quyền dự án.</p>'}
         <button type="button" id="refresh-ot">Tải lại quyền</button>
       </section>`;
       bindNavigation();
@@ -96,6 +102,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa có dự án được phân công. Quản trị hệ thống cần thêm bạn vào danh sách thành viên của dự án.</p></section>']] : []),
       ['report', 'Báo cáo', renderReport(state, getReport(state))],
       ...(central ? [['management', 'Quản lý', renderAdmin(state)],
+        ['permissions', 'Phân quyền dự án', renderProjectPermissions(state)],
         ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
       ['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>
         <p>Bản JSON chứa dữ liệu trong phạm vi vai trò đang sử dụng.</p>
@@ -157,7 +164,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         ...(central && { profiles: state.profiles, memberships: state.memberships, audit: state.audit, projectAdmins: state.projectAdmins }) };
       download('ot-supabase-backup.json', JSON.stringify(snapshot, null, 2), 'application/json');
     }));
-    const options = { action, api, alive, findPeriod, findCalendar, refresh, notice, uploadSignal: uploads.signal };
+    const options = { action, api, alive, findPeriod, findCalendar, findLimits, refresh, notice, uploadSignal: uploads.signal };
     if (upload) bindUpload(root, state, profile, options);
     if (canManage) {
       const submit = (selector, rpc, payload, message) => on(selector, 'submit', event => {
@@ -201,7 +208,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
   function renderCalendarContent() {
     const content = root.querySelector('#calendar-content');
     const showYear = Boolean(content.querySelector('details[open]'));
-    content.innerHTML = renderCalendarPeriod(state, findPeriod, findCalendar);
+    content.innerHTML = renderCalendarPeriod(state, findPeriod, findCalendar, findLimits);
     content.querySelector('details').open = showYear;
     const scope = root.querySelector('#calendar-scope');
     const periodButton = root.querySelector('#calendar-period');
@@ -217,26 +224,45 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         if (alive()) notice('Đã lưu trạng thái kỳ.');
       });
     };
+    function markCalendarDraft() {
+      root.querySelector('#calendar-draft').hidden = false;
+      if (periodButton) periodButton.disabled = true;
+    }
+    const limits = [...root.querySelectorAll('#calendar-days input[name=limit]:not([readonly])')];
+    for (const input of limits) input.oninput = markCalendarDraft;
     for (const select of root.querySelectorAll('#calendar-days select:not(:disabled)')) {
       select.onchange = () => {
-        const index = select.closest('td').cellIndex;
-        select.closest('td').dataset.dayType = select.value;
-        select.closest('table').tHead.rows[0].cells[index].dataset.dayType = select.value;
-        root.querySelector('#calendar-draft').hidden = false;
-        if (periodButton) periodButton.disabled = true;
+        const cell = select.closest('td');
+        const index = cell.cellIndex;
+        const limit = limits[index - 1];
+        if (limit && durationMinutes(limit.value) === defaultLimit(cell.dataset.dayType)) {
+          limit.value = durationValue(defaultLimit(select.value));
+        }
+        for (const row of select.closest('table').rows) row.cells[index].dataset.dayType = select.value;
+        markCalendarDraft();
       };
     }
     on('#calendar-days', 'submit', event => {
       event.preventDefault();
       if (!scope.reportValidity()) return;
-      const days = new FormData(event.currentTarget).getAll('day');
+      const fields = new FormData(event.currentTarget);
+      const days = fields.getAll('day');
       if (!days.length) return;
       action(async () => {
         const { calendarProject: project, calendarYear: year, calendarMonth: month } = state;
-        await api.rpc('ot_set_calendar', {
+        const payload = {
           p_project: project, p_year: year, p_month: month, p_days: days,
           p_expected_revision: findPeriod(project, year, month)?.revision ?? 0
-        });
+        };
+        if (state.limitsEnabled) {
+          const values = fields.getAll('limit').map(durationMinutes);
+          if (values.length !== days.length) throw Error('Cần nhập giới hạn cho từng ngày trong tháng.');
+          const invalid = values.indexOf(null);
+          if (invalid !== -1) throw Error('Giới hạn giờ ngày ' + (invalid + 1) + ' cần từ 0 đến 24 giờ.');
+          await api.rpc('ot_set_calendar_with_limits', { ...payload, p_limit_minutes: values });
+        } else {
+          await api.rpc('ot_set_calendar', payload);
+        }
         if (!alive()) return;
         await refresh();
         if (alive()) notice('Đã lưu lịch làm việc tháng ' + month + '/' + year + '.');
@@ -281,7 +307,16 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     const scope = (member ? membership : grants ?? []).map(grant => grant.project_id);
     const filter = central ? {} : { project_id: 'in.(' + scope.join(',') + ')' };
     const scoped = (table, query) => central || scope.length ? api.list(table, query) : [];
-    const [projects, periods, entries, profiles, memberships, audit, projectAdmins, calendars] = await Promise.all([
+    const listCalendars = select => scoped('ot_period_calendars', {
+      select, order: 'project_id.asc,year.asc,month.asc', ...filter });
+    const calendarFields = 'project_id,year,month,days';
+    const calendarResponse = optionalTable(listCalendars(calendarFields + ',limit_minutes'))
+      .then(calendars => ({ calendars, limitsEnabled: calendars !== null }))
+      .catch(async error => {
+        if (error.code !== '42703' && error.code !== 'PGRST204') throw error;
+        return { calendars: await optionalTable(listCalendars(calendarFields)), limitsEnabled: false };
+      });
+    const [projects, periods, entries, profiles, memberships, audit, projectAdmins, { calendars, limitsEnabled }] = await Promise.all([
       scoped('ot_projects', { select: 'id,code,name,description,status', order: 'code.asc,id.asc',
         ...(!central && { id: filter.project_id }) }),
       scoped('ot_periods', { select: 'project_id,year,month,is_open,revision,data_revision', order: 'project_id.asc,year.asc,month.asc', ...filter }),
@@ -290,7 +325,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       central ? api.list('ot_project_members', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : [],
       central ? api.list('ot_audit_events', { select: '*', order: 'id.desc' }) : [],
       central && grants !== null ? api.list('ot_project_admins', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : null,
-      optionalTable(scoped('ot_period_calendars', { select: 'project_id,year,month,days', order: 'project_id.asc,year.asc,month.asc', ...filter }))
+      calendarResponse
     ]);
     if (!alive()) return;
     if (!state.entries) {
@@ -312,7 +347,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       else if (active.length === 1) state.manualScope = { project: active[0].id, year: state.year, month: state.month };
     }
     Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit,
-      projectAdmins, calendars, calendarIndex, periodIndex: byPeriod(periods) });
+      projectAdmins, calendars, limitsEnabled, calendarIndex, periodIndex: byPeriod(periods) });
     render();
   }
 

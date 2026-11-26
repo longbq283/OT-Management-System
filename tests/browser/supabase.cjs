@@ -21,7 +21,7 @@ const entries = [];
 const projectAdmins = [{ project_id: 'pr-a', user_id: admin.id, active: true }];
 const memberships = [{ project_id: 'pr-b', user_id: account.id, active: true },
   { project_id: 'pr-b', user_id: admin.id, active: true }];
-const calendars = [{ project_id: 'pr-b', year: 2026, month: 11, days: Array(30).fill('NT') }];
+const calendars = [{ project_id: 'pr-b', year: 2026, month: 11, days: Array(30).fill('NT'), limit_minutes: [720, 780, ...Array(28).fill(120)] }];
 const calls = [];
 let networkError = false;
 let duplicate = false;
@@ -83,7 +83,7 @@ async function routeRequest(route) {
     else projectAdmins.push({ project_id: fields.p_project, user_id: fields.p_user, active: fields.p_active });
     return send(null);
   }
-  if (endpoint.endsWith('/ot_set_calendar')) {
+  if (endpoint.endsWith('/ot_set_calendar_with_limits')) {
     assert.ok(actor === admin || projectAdmins.some(grant => grant.active &&
       grant.project_id === fields.p_project && grant.user_id === actor.id));
     const period = periods.find(row => row.project_id === fields.p_project);
@@ -91,8 +91,10 @@ async function routeRequest(route) {
     assert.equal(period.is_open, false);
     const existing = calendars.find(calendar => calendar.project_id === fields.p_project &&
       calendar.year === fields.p_year && calendar.month === fields.p_month);
-    if (existing) existing.days = fields.p_days;
-    else calendars.push({ project_id: fields.p_project, year: fields.p_year, month: fields.p_month, days: fields.p_days });
+    assert.equal(fields.p_limit_minutes.length, fields.p_days.length);
+    if (existing) Object.assign(existing, { days: fields.p_days, limit_minutes: fields.p_limit_minutes });
+    else calendars.push({ project_id: fields.p_project, year: fields.p_year, month: fields.p_month,
+      days: fields.p_days, limit_minutes: fields.p_limit_minutes });
     return send(++period.revision);
   }
   if (endpoint.endsWith('/ot_set_period')) {
@@ -111,7 +113,9 @@ async function routeRequest(route) {
     assert.ok(period.is_open);
     const calendar = calendars.find(item => item.project_id === fields.p_project);
     for (const row of fields.p_rows) for (const day of row.days) {
-      assert.equal(day.type, calendar.days[Number(day.date.slice(-2)) - 1]);
+      const index = Number(day.date.slice(-2)) - 1;
+      assert.equal(day.type, calendar.days[index]);
+      assert.ok(day.minutes <= calendar.limit_minutes[index]);
     }
     if (fields.p_replace) for (const row of entries) {
       if (row.project_id === fields.p_project && row.user_id === actor.id) row.active = false;
@@ -294,8 +298,14 @@ async function run() {
     assert.equal(await operator.locator('.calendar-year section:visible').count(), 12);
     assert.equal(await operator.locator('#calendar-days select').count(), 30);
     assert.equal(await operator.getByLabel('Ngày 1', { exact: true }).inputValue(), 'NN');
+    assert.equal(await operator.getByLabel('Giới hạn giờ ngày 1', { exact: true }).inputValue(), '4');
+    assert.equal(await operator.getByLabel('Giới hạn giờ ngày 2', { exact: true }).inputValue(), '2');
     await operator.getByLabel('Ngày 1', { exact: true }).selectOption('NT');
     await operator.getByLabel('Ngày 2', { exact: true }).selectOption('L');
+    assert.equal(await operator.getByLabel('Giới hạn giờ ngày 1', { exact: true }).inputValue(), '2');
+    assert.equal(await operator.getByLabel('Giới hạn giờ ngày 2', { exact: true }).inputValue(), '4');
+    await operator.getByLabel('Giới hạn giờ ngày 1', { exact: true }).fill('20');
+    await operator.getByLabel('Giới hạn giờ ngày 2', { exact: true }).fill('5');
     assert.equal(await operator.getByRole('button', { name: 'Mở kỳ', exact: true }).count(), 0);
     await operator.getByRole('button', { name: 'Lưu lịch tháng' }).click();
     await sleepUntilMessage(operator, 'Đã lưu lịch làm việc tháng 11/2026.');
@@ -312,6 +322,10 @@ async function run() {
     await dayOne.fill('25');
     await page.locator('#manual-ot button').click();
     await sleepUntilMessage(page, 'Ngày 1 cần số giờ từ 0 đến 24');
+    await dayOne.fill('21');
+    assert.equal(await dayOne.getAttribute('aria-invalid'), 'true');
+    await page.locator('#manual-ot button').click();
+    await sleepUntilMessage(page, 'Ngày 01 vượt giới hạn 20 giờ OT');
     await dayOne.evaluate(input => {
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', '20\t5,0');
@@ -357,9 +371,9 @@ async function run() {
     const [backup] = await Promise.all([page.waitForEvent('download'), page.locator('#export-backup').click()]);
     assert.match(backup.suggestedFilename(), /ot-supabase-backup/);
     assert.equal(await page.locator('#admin-project').count(), 0);
-    await operator.locator('[data-pane=management]').click();
+    await operator.locator('[data-pane=permissions]').click();
     const grantForm = operator.locator('#admin-project-role');
-    await operator.getByText('Cấp quyền quản trị dự án', { exact: true }).click();
+    await operator.getByRole('heading', { name: 'Cấp quyền quản trị dự án', exact: true }).waitFor();
     await grantForm.locator('[name=project]').selectOption('pr-a');
     await grantForm.locator('[name=user]').selectOption(account.id);
     await grantForm.getByRole('button').click();
@@ -378,10 +392,11 @@ async function run() {
     await page.getByRole('button', { name: 'Khóa kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
     await page.getByLabel('Ngày 3', { exact: true }).selectOption('L');
+    await page.getByLabel('Giới hạn giờ ngày 3', { exact: true }).fill('1:30');
     await page.getByRole('button', { name: 'Lưu lịch tháng' }).click();
     await sleepUntilMessage(page, 'Đã lưu lịch làm việc tháng 11/2026.');
-    assert.ok(calls.some(call => call.actor === account.id && call.endpoint.endsWith('/ot_set_calendar') &&
-      call.fields.p_project === 'pr-a' && call.fields.p_days[2] === 'L'));
+    assert.ok(calls.some(call => call.actor === account.id && call.endpoint.endsWith('/ot_set_calendar_with_limits') &&
+      call.fields.p_project === 'pr-a' && call.fields.p_days[2] === 'L' && call.fields.p_limit_minutes[2] === 90));
     await page.getByRole('button', { name: 'Mở kỳ', exact: true }).click();
     await sleepUntilMessage(page, 'Đã lưu trạng thái kỳ.');
 
@@ -392,6 +407,7 @@ async function run() {
     await sleepUntilMessage(operator, 'Đã cập nhật quyền quản trị dự án.');
     await page.locator('#refresh-ot').click();
     await page.locator('[data-role=project]').waitFor({ state: 'detached' });
+    await page.getByText('Quản trị dự án · Chưa được cấp quyền', { exact: true }).waitFor();
     assert.equal(await page.locator('#calendar-scope').count(), 0);
     await page.reload();
     await login(page, account);

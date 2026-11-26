@@ -11,7 +11,7 @@ export function renderAdmin(state) {
   const projectName = id => state.projects.find(project => project.id === id)?.code || id;
   const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Vô hiệu hóa' };
   const actions = { profile_review: 'Duyệt tài khoản', project_saved: 'Lưu dự án',
-    membership_changed: 'Phân công', period_calendar_saved: 'Lưu lịch tháng', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
+    membership_changed: 'Phân công', period_calendar_saved: 'Lưu lịch tháng', period_limits_saved: 'Lưu giới hạn theo ngày', project_admin_changed: 'Cấp hoặc thu hồi quản trị dự án', period_changed: 'Đổi trạng thái kỳ',
     entries_submitted: 'Nhập OT', entries_replaced: 'Thay thế OT' };
   return `<section class="account-card">
     <h2>Quản trị hệ thống</h2>
@@ -39,20 +39,6 @@ export function renderAdmin(state) {
         <button class="primary">Lưu duyệt tài khoản</button>
       </form>
     </details>
-    <details><summary>Cấp quyền quản trị dự án</summary>
-      ${state.projectAdmins === null ? '<p>Áp dụng migration quản trị dự án trong Supabase để dùng chức năng này.</p>' : `
-        <p class="account-muted">Duyệt tài khoản trước khi cấp quyền. Người được cấp quyền chọn Quản trị dự án sau khi đăng nhập để tự sửa lịch và mở hoặc khóa kỳ.</p>
-        ${table(['Dự án', 'Cán bộ', 'Quyền'], state.projectAdmins.map(grant => [
-          projectName(grant.project_id), profileName(grant.user_id), grant.active ? 'Quản trị dự án' : 'Đã thu hồi']))}
-        <form id="admin-project-role">
-          <div class="account-grid">
-            <label>Dự án<select name="project" required><option value="">Chọn dự án</option>${projects}</select></label>
-            <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${assignable}</select></label>
-            <label>Quyền<select name="active"><option value="true">Cấp quyền</option><option value="false">Thu hồi quyền</option></select></label>
-          </div>
-          <button class="primary">Lưu quyền quản trị dự án</button>
-        </form>`}
-    </details>
     <details><summary>Phân công dự án</summary>
       ${table(['Dự án', 'Cán bộ', 'Phân công'], state.memberships.map(member => [
         projectName(member.project_id), profileName(member.user_id), member.active ? 'Đang phân công' : 'Đã thu hồi']))}
@@ -71,6 +57,29 @@ export function renderAdmin(state) {
         new Date(event.occurred_at).toLocaleString('vi-VN'), profileName(event.actor_id), actions[event.action] || event.action,
         JSON.stringify(event.detail)
       ]))}${state.audit.length > 100 ? '<p>Xem toàn bộ nhật ký trong bản sao lưu.</p>' : ''}</details>
+  </section>`;
+}
+
+export function renderProjectPermissions(state) {
+  const projects = projectOptions(state.projects);
+  const assignable = state.profiles.filter(profile => profile.employee_code)
+    .map(profile => option(profile.id, profile.employee_code + ' · ' + profile.full_name)).join('');
+  const profileName = id => state.profiles.find(profile => profile.id === id)?.full_name || id;
+  const projectName = id => state.projects.find(project => project.id === id)?.code || id;
+  return `<section class="account-card">
+    <h2>Cấp quyền quản trị dự án</h2>
+      ${state.projectAdmins === null ? '<p>Áp dụng migration quản trị dự án trong Supabase để dùng chức năng này.</p>' : `
+        <p class="account-muted">Duyệt tài khoản trước khi cấp quyền. Người được cấp quyền chọn Quản trị dự án sau khi đăng nhập để tự sửa lịch và mở hoặc khóa kỳ.</p>
+        ${table(['Dự án', 'Cán bộ', 'Quyền'], state.projectAdmins.map(grant => [
+          projectName(grant.project_id), profileName(grant.user_id), grant.active ? 'Quản trị dự án' : 'Đã thu hồi']))}
+        <form id="admin-project-role">
+          <div class="account-grid">
+            <label>Dự án<select name="project" required><option value="">Chọn dự án</option>${projects}</select></label>
+            <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${assignable}</select></label>
+            <label>Quyền<select name="active"><option value="true">Cấp quyền</option><option value="false">Thu hồi quyền</option></select></label>
+          </div>
+          <button class="primary">Lưu quyền quản trị dự án</button>
+        </form>`}
   </section>`;
 }
 

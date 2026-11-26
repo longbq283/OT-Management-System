@@ -1,4 +1,4 @@
-import { dateOf, dayTypes, defaultDays, monthLegend, monthOptions, renderMonthGrid, weekdays } from './month-grid.js';
+import { dateOf, dayTypes, defaultDays, defaultLimit, durationValue, monthLegend, monthOptions, renderMonthGrid, weekdays } from './month-grid.js?v=7';
 import { esc, option, projectOptions } from './ui.mjs';
 
 export function renderCalendar(state) {
@@ -14,11 +14,12 @@ export function renderCalendar(state) {
   </section>`;
 }
 
-export function renderCalendarPeriod(state, findPeriod, findCalendar) {
+export function renderCalendarPeriod(state, findPeriod, findCalendar, findLimits) {
   const { calendarProject: project, calendarYear: year, calendarMonth: month } = state;
   const period = findPeriod(project, year, month);
   const saved = findCalendar(project, year, month);
   const days = saved ?? defaultDays(year, month);
+  const limits = findLimits(project, year, month) ?? days.map(defaultLimit);
   const active = state.projects.find(item => item.id === project)?.status === 'active';
   const editing = active && !period?.is_open;
   return `<form id="calendar-days">
@@ -28,11 +29,15 @@ export function renderCalendarPeriod(state, findPeriod, findCalendar) {
       ${monthLegend()}
       <p class="account-muted">${!active ? 'Dự án đã ngừng hoạt động.' : period?.is_open ? 'Khóa kỳ trước khi sửa lịch.'
         : saved ? 'Chọn loại ngày cần đổi rồi lưu lịch.' : 'Lịch gợi ý đặt thứ Bảy và Chủ nhật là ngày nghỉ. Chọn ngày lễ của đơn vị trước khi lưu.'}</p>
+      <p class="account-muted">${state.limitsEnabled ? 'Mặc định 2 giờ ngày thường và 4 giờ ngày nghỉ hoặc ngày lễ. Nhập 0 để ngày đó không được nhập OT.'
+        : 'Cần áp dụng migration giới hạn OT trong Supabase để chỉnh giới hạn theo ngày.'}</p>
       ${renderMonthGrid(year, month, days, {
         label: 'Loại ngày tháng ' + month + '/' + year,
         rows: [{ label: 'Loại ngày', cell: (type, day) => `<select name="day" aria-label="Ngày ${day}"
           title="${dayTypes[type]}" ${editing ? '' : 'disabled'}>${Object.keys(dayTypes)
-            .map(code => option(code, code, type)).join('')}</select>` }]
+            .map(code => option(code, code, type)).join('')}</select>` },
+          ...(state.limitsEnabled ? [{ label: 'Giới hạn (giờ)', cell: (_, day) => `<input name="limit" inputmode="decimal"
+            aria-label="Giới hạn giờ ngày ${day}" value="${durationValue(limits[day - 1])}" ${editing ? 'required' : 'readonly'}>` }] : [])]
       })}
       <div class="account-actions month-actions">
         ${editing ? '<button class="primary">Lưu lịch tháng</button>' : ''}

@@ -38,6 +38,8 @@ const errorMessages = {
   OT_CALENDAR_INVALID: 'Lịch cần có đủ các ngày trong tháng và loại ngày hợp lệ.',
   OT_CALENDAR_OPEN: 'Hãy khóa kỳ trước khi sửa lịch.',
   OT_DAY_TYPE: 'Loại ngày OT không khớp lịch đã lưu. Vui lòng tải lại và xem trước lại.',
+  OT_DAILY_LIMIT: 'Có ngày vượt giới hạn giờ của dự án. Hãy tải lại lịch và điều chỉnh số giờ.',
+  OT_LIMITS_INVALID: 'Giới hạn OT cần từ 0 đến 24 giờ cho từng ngày.',
   OT_DAILY_REQUIRED: 'Kỳ này yêu cầu số giờ chi tiết theo từng ngày.',
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
 };

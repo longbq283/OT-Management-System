@@ -7,7 +7,7 @@ const entryKey = row => JSON.stringify([
   [...row.days].sort((a, b) => a.date.localeCompare(b.date)).map(day => [day.date, day.type, day.minutes])
 ]);
 
-export function bindMigration(root, state, { action, api, alive, findPeriod, findCalendar, refresh, notice }) {
+export function bindMigration(root, state, { action, api, alive, findPeriod, findCalendar, findLimits, refresh, notice }) {
   const form = root.querySelector('#legacy-migration');
   const output = root.querySelector('#migration-preview');
   if (!form) return;
@@ -31,11 +31,15 @@ export function bindMigration(root, state, { action, api, alive, findPeriod, fin
           && row.month === group.month && row.active);
         const same = JSON.stringify(active.map(entryKey).sort()) === JSON.stringify(group.rows.map(entryKey).sort());
         const calendar = findCalendar(group.project, group.year, group.month);
+        const limits = findLimits(group.project, group.year, group.month);
         const typeConflict = calendar && group.rows.some(row => row.days.some(day =>
           day.type !== calendar[Number(day.date.slice(-2)) - 1]));
+        const limitConflict = limits && group.rows.some(row => row.days.some(day =>
+          day.minutes > limits[Number(day.date.slice(-2)) - 1]));
         const status = same ? 'Khớp dữ liệu đích' : active.length ? 'Xung đột dữ liệu đích'
           : state.calendars !== null && !calendar ? 'Chưa có lịch'
-            : typeConflict ? 'Loại ngày nguồn khác lịch' : !period?.is_open ? 'Kỳ đang khóa' : 'Có thể chuyển';
+            : typeConflict ? 'Loại ngày nguồn khác lịch' : limitConflict ? 'Có ngày vượt giới hạn OT'
+              : !period?.is_open ? 'Kỳ đang khóa' : 'Có thể chuyển';
         return { ...group, status, period };
       });
       output.innerHTML = `<p>Đã kiểm tra bản sao. Lịch sử cũ giữ trong JSON gốc. Mỗi lần chỉ chuyển một kỳ trống.</p>

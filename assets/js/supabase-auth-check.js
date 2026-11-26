@@ -1,5 +1,5 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=4';
-import { mountWorkspace } from '../../src/supabase/workspace.js?v=6';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=7';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=7';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');

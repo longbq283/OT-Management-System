@@ -1,3 +1,4 @@
+import { parseMinutes } from '../import/engine.mjs';
 import { esc, option } from './ui.mjs';
 
 export const dayTypes = { NT: 'Ngày thường', NN: 'Ngày nghỉ', L: 'Ngày lễ' };
@@ -11,6 +12,17 @@ export function defaultDays(year, month) {
     const weekday = dateOf(year, month, i + 1).getUTCDay();
     return weekday === 0 || weekday === 6 ? 'NN' : 'NT';
   });
+}
+
+export const defaultLimit = type => type === 'NT' ? 120 : 240;
+
+export function durationMinutes(value) {
+  const result = parseMinutes({ v: value.trim() });
+  return result.error || result.minutes > 1440 ? null : result.minutes;
+}
+
+export function durationValue(minutes) {
+  return minutes % 60 ? Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0') : String(minutes / 60);
 }
 
 export function monthOptions(selected) {
