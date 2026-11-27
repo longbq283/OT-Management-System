@@ -1,5 +1,5 @@
 import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=11';
-import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js?v=2';
+import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js?v=3';
 import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
 import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
 import { bindMigration } from './migration.js?v=7';

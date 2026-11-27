@@ -1,5 +1,5 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=11';
-import { mountWorkspace } from '../../src/supabase/workspace.js?v=12';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=12';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=13';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');
@@ -11,6 +11,10 @@ const register = document.querySelector('#register');
 const signupFields = document.querySelector('#signup-fields');
 const signupOtp = document.querySelector('#signup-otp');
 const passwordForm = document.querySelector('#set-password');
+const activationForm = document.querySelector('#activate-account');
+const activationLink = '#kich-hoat=';
+let activationHash;
+let activationSession;
 const statuses = { pending: 'Chờ quản trị viên duyệt', active: 'Đang hoạt động', disabled: 'Đã vô hiệu hóa' };
 let closeWorkspace;
 let busy = false;
@@ -40,6 +44,10 @@ function setOtpStep(active) {
 
 function showForm(id, email) {
   setOtpStep(false);
+  if (id !== activationForm.id) {
+    activationHash = null;
+    activationSession = undefined;
+  }
   passwordSession = undefined;
   passwordForm.elements.otp.required = true;
   for (const form of authForms) {
@@ -149,7 +157,7 @@ async function run(action) {
 
 for (const button of auth.querySelectorAll('[data-auth]')) {
   button.addEventListener('click', () => {
-    const email = authForms.find(form => !form.hidden)?.elements.email.value;
+    const email = authForms.find(form => !form.hidden)?.elements.email?.value;
     showForm(button.dataset.auth, email);
     notice();
   });
@@ -164,12 +172,48 @@ for (const form of authForms) {
     if (form.elements.password) form.elements.password.value = '';
     if (form.elements.otp) form.elements.otp.value = '';
     run(async () => {
+      if (form === activationForm) {
+        if (!activationSession) {
+          if (!/^[A-Za-z0-9_-]{20,200}$/.test(activationHash ?? '')) {
+            throw Error('Liên kết kích hoạt không hợp lệ. Hãy mở lại liên kết từ email.');
+          }
+          try {
+            activationSession = await api.verifyActivation(activationHash);
+          } catch (error) {
+            if (error.code === 'otp_expired') {
+              throw Error('Liên kết kích hoạt đã hết hạn hoặc đã được dùng. Hãy yêu cầu gửi lại hoặc dùng Quên mật khẩu.');
+            }
+            throw error;
+          }
+          activationHash = null;
+        }
+        try {
+          await api.setPassword(activationSession.token, fields.password);
+        } catch (error) {
+          if (error.status === 401) {
+            activationSession = undefined;
+            showForm('set-password');
+            throw Error('Phiên kích hoạt đã hết hạn. Hãy gửi mã đặt lại mật khẩu.');
+          }
+          throw error;
+        }
+        const { email } = activationSession;
+        showForm('login', email);
+        try {
+          await api.signIn(email, fields.password);
+        } catch {
+          notice('Đã lưu mật khẩu. Hãy đăng nhập để hoàn tất kích hoạt.');
+          return;
+        }
+        await showProfile();
+        return;
+      }
       const email = normalizeEmail(fields.email);
       if (form === passwordForm) {
-        if (passwordSession?.email !== email || passwordSession?.mode !== fields.mode) {
+        if (passwordSession?.email !== email) {
           if (!fields.otp) throw Error('Vui lòng nhập mã OTP đã nhận.');
-          const token = await api.verifyPasswordCode(email, fields.otp, fields.mode);
-          passwordSession = { email, mode: fields.mode, token };
+          const token = await api.verifyPasswordCode(email, fields.otp);
+          passwordSession = { email, token };
           passwordForm.elements.otp.required = false;
         }
         try {
@@ -230,7 +274,6 @@ document.querySelector('#send-password-reset').addEventListener('click', () => {
     const email = normalizeEmail(passwordForm.elements.email.value);
     await api.sendPasswordReset(email);
     passwordSession = undefined;
-    passwordForm.elements.mode.value = 'recovery';
     passwordForm.elements.otp.required = true;
     passwordForm.elements.otp.value = '';
     passwordForm.elements.otp.focus();
@@ -245,5 +288,21 @@ logout.addEventListener('click', () => run(async () => {
   notice('Đã đăng xuất.');
 }));
 
-if (api.userId) run(showProfile);
-else showForm('login');
+function openActivationFromLink() {
+  if (!location.hash.startsWith(activationLink)) return false;
+  const tokenHash = location.hash.slice(activationLink.length);
+  history.replaceState(null, '', location.pathname + location.search);
+  api.forget();
+  clearAccount();
+  notice();
+  activationHash = tokenHash;
+  showForm(activationForm.id);
+  activationForm.elements.password.focus();
+  return true;
+}
+
+window.addEventListener('hashchange', openActivationFromLink);
+if (!openActivationFromLink()) {
+  if (api.userId) run(showProfile);
+  else showForm('login');
+}

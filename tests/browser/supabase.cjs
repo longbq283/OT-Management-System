@@ -13,6 +13,9 @@ const account = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', email: 'fixture-us
 const admin = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', email: 'fixture-admin@bidv.com.vn',
   full_name: 'Quản trị giả lập', requested_employee_code: '00000001', employee_code: '00000001', role: 'admin', status: 'active' };
 const missing = { id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', email: 'fixture-missing@bidv.com.vn' };
+const invited = { id: 'dddddddd-dddd-dddd-dddd-dddddddddddd', email: 'fixture-project-new@bidv.com.vn',
+  full_name: 'Cán bộ mới', requested_employee_code: '00000457', employee_code: null, role: 'user', status: 'pending' };
+const activationHash = 'fixture-activation-hash-457';
 const projects = [{ id: 'pr-a', code: 'A', name: 'Dự án giả lập A', status: 'active' },
   { id: 'pr-b', code: 'B', name: 'Dự án giả lập B', status: 'active' }];
 const periods = projects.map(project => ({ project_id: project.id, year: 2026, month: 11,
@@ -35,19 +38,24 @@ async function routeRequest(route) {
   const endpoint = url.pathname;
   const fields = req.postDataJSON();
   const token = req.headers().authorization?.slice('Bearer '.length);
-  const actor = [account, admin, missing].find(user => token === 'fixture-session-' + user.id);
+  const actor = [account, admin, missing, invited].find(user => token === 'fixture-session-' + user.id);
   calls.push({ endpoint, fields, actor: actor?.id, userFilter: url.searchParams.get('user_id') });
   const send = (value, status = 200) => route.fulfill({ status, json: value,
     headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
       'sb-request-id': 'fixture-request-id' } });
   const session = user => ({ access_token: 'fixture-session-' + user.id, expires_in: 3600, user: { id: user.id } });
-  if (endpoint.endsWith('/ot-invite-user')) {
-    assert.equal(actor, admin);
-    invitations.push({ email: fields.email, full_name: fields.fullName, employee_code: fields.employeeCode });
+  if (endpoint.endsWith('/ot-activate-user')) {
+    if (fields.project) assert.ok(projectAdmins.some(grant => grant.active && grant.user_id === actor?.id && grant.project_id === fields.project));
+    else assert.equal(actor, admin);
+    invitations.push({ email: fields.email, full_name: fields.fullName, employee_code: fields.employeeCode, project_id: fields.project });
     return send({ invited: true });
   }
   if (endpoint.endsWith('/recover')) return send({});
-  if (endpoint.endsWith('/verify') && ['invite', 'recovery'].includes(fields.type)) {
+  if (endpoint.endsWith('/verify') && fields.type === 'invite') {
+    assert.equal(fields.token_hash, activationHash);
+    return send({ access_token: passwordSetupToken, user: { email: invited.email } });
+  }
+  if (endpoint.endsWith('/verify') && fields.type === 'recovery') {
     return fields.token === '234567' ? send({ access_token: passwordSetupToken }) : send({ error_code: 'otp_expired' }, 403);
   }
   if (endpoint.endsWith('/auth/v1/user') && req.method() === 'PUT') {
@@ -62,12 +70,12 @@ async function routeRequest(route) {
   }
   if (endpoint.endsWith('/resend')) return send({});
   if (endpoint.endsWith('/verify')) return fields.token === '123456' ? send(session(account)) : send({ error_code: 'otp_expired' }, 403);
-  if (endpoint.endsWith('/token')) return send(session([admin, account, missing].find(user => user.email === fields.email)));
+  if (endpoint.endsWith('/token')) return send(session([admin, account, missing, invited].find(user => user.email === fields.email)));
   if (endpoint.endsWith('/logout')) return route.fulfill({ status: 204 });
   if (!actor) return send({}, 401);
   if (endpoint.endsWith('/ot_profiles')) {
     const id = url.searchParams.get('id');
-    return send(id ? [account, admin].filter(user => id === 'eq.' + user.id) : [account, admin]);
+    return send(id ? [account, admin, invited].filter(user => id === 'eq.' + user.id) : [account, admin]);
   }
   const inScope = (field, value) => {
     const filter = url.searchParams.get(field);
@@ -79,7 +87,14 @@ async function routeRequest(route) {
   if (endpoint.endsWith('/ot_entries')) return send(entries.filter(row => inScope('project_id', row.project_id) && inScope('user_id', row.user_id)));
   if (endpoint.endsWith('/ot_project_members')) return send(memberships.filter(row => inScope('user_id', row.user_id)));
   if (endpoint.endsWith('/ot_audit_events')) return send([]);
-  if (endpoint.endsWith('/ot_consume_user_invitation')) return send(false);
+  if (endpoint.endsWith('/ot_consume_user_invitation')) {
+    if (actor !== invited) return send(false);
+    const registration = invitations.find(item => item.email === invited.email);
+    assert.equal(registration.project_id, 'pr-a');
+    Object.assign(invited, { status: 'active', employee_code: registration.employee_code });
+    memberships.push({ project_id: registration.project_id, user_id: invited.id, active: true });
+    return send(true);
+  }
   if (endpoint.endsWith('/ot_user_invitations')) {
     assert.equal(actor, admin);
     return send(invitations);
@@ -320,12 +335,13 @@ async function run() {
     await operator.locator('#user-invitation [name=email]').fill('fixture-new@bidv.com.vn');
     await operator.locator('#user-invitation [name=fullName]').fill('Đăng ký trước giả lập');
     await operator.locator('#user-invitation [name=code]').fill('456');
-    await operator.getByRole('button', { name: 'Lưu đăng ký trước' }).click();
-    await sleepUntilMessage(operator, 'Đã lưu hồ sơ đăng ký trước.');
+    await operator.locator('#user-invitation').getByRole('button', { name: 'Tạo tài khoản' }).click();
+    await sleepUntilMessage(operator, 'Đã gửi liên kết kích hoạt đến email BIDV.');
+    assert.equal(invitations[0].project_id, null);
     assert.equal(invitations[0].employee_code, '00000456');
     await operator.locator('#cancel-invitation [name=email]').selectOption('fixture-new@bidv.com.vn');
-    await operator.getByRole('button', { name: 'Hủy đăng ký trước' }).click();
-    await sleepUntilMessage(operator, 'Đã hủy hồ sơ đăng ký trước.');
+    await operator.getByRole('button', { name: 'Hủy kích hoạt' }).click();
+    await sleepUntilMessage(operator, 'Đã hủy kích hoạt tài khoản.');
 
     await operator.getByText('Phân công dự án', { exact: true }).click();
     await operator.locator('#admin-member [name=project]').selectOption('pr-a');
@@ -514,6 +530,14 @@ async function run() {
     await page.locator('[data-pane=members]').click();
     await page.locator('#team-add').waitFor();
     assert.deepEqual(await page.locator('#team-project option').evaluateAll(items => items.map(item => item.value)), ['pr-a']);
+    await page.getByText('Tạo tài khoản cho dự án này').click();
+    const projectActivation = page.locator('#team-activation');
+    await projectActivation.locator('[name=email]').fill(invited.email);
+    await projectActivation.locator('[name=fullName]').fill(invited.full_name);
+    await projectActivation.locator('[name=code]').fill('457');
+    await projectActivation.getByRole('button', { name: 'Tạo tài khoản' }).click();
+    await sleepUntilMessage(page, 'Đã gửi liên kết kích hoạt đến email BIDV.');
+    assert.ok(invitations.some(item => item.email === invited.email && item.project_id === 'pr-a'));
     await page.locator('#team-add [name=code]').fill('1');
     await page.getByRole('button', { name: 'Thêm vào dự án', exact: true }).click();
     await sleepUntilMessage(page, 'Đã thêm thành viên vào dự án.');
@@ -562,25 +586,23 @@ async function run() {
     await page.reload();
     await page.getByRole('heading', { name: 'Đăng nhập', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => sessionStorage.getItem('ot-workspace:session')), null);
-    await operator.locator('#user-invitation [name=email]').fill('fixture-send@bidv.com.vn');
-    await operator.locator('#user-invitation [name=fullName]').fill('Thư mời giả lập');
-    await operator.locator('#user-invitation [name=code]').fill('457');
-    await operator.getByRole('button', { name: 'Tạo tài khoản và gửi thư mời' }).click();
-    await sleepUntilMessage(operator, 'Đã gửi thư mời.');
-    assert.ok(calls.some(call => call.endpoint.endsWith('/ot-invite-user') && call.fields.employeeCode === '00000457'));
-    await page.getByRole('button', { name: 'Thư mời / Quên mật khẩu' }).click();
+    await page.goto(base + '/kiem-tra-tai-khoan.html#kich-hoat=' + activationHash);
+    const activation = page.locator('#activate-account');
+    await activation.waitFor();
+    assert.equal(new URL(page.url()).hash, '');
+    assert.equal(await page.getByRole('button', { name: /Thư mời/ }).count(), 0);
+    assert.equal(calls.some(call => call.endpoint.endsWith('/verify') && call.fields.type === 'invite'), false);
+    await activation.locator('[name=password]').fill('Fixture-new-password');
+    await activation.getByRole('button', { name: 'Kích hoạt tài khoản' }).click();
+    await sleepUntilMessage(page, 'Đang hoạt động');
+    assert.ok(memberships.some(row => row.user_id === invited.id && row.project_id === 'pr-a' && row.active));
+    await page.locator('#logout').click();
+    await sleepUntilMessage(page, 'Đã đăng xuất');
+    await page.getByRole('button', { name: 'Quên mật khẩu', exact: true }).click();
     const password = page.locator('#set-password');
-    await password.locator('[name=email]').fill('fixture-send@bidv.com.vn');
-    await password.locator('[name=otp]').fill('234567');
-    await password.locator('[name=password]').fill('Fixture-new-password');
-    await password.getByRole('button', { name: 'Lưu mật khẩu' }).click();
-    await sleepUntilMessage(page, 'Đã lưu mật khẩu.');
-    assert.equal(await page.locator('#login [name=email]').inputValue(), 'fixture-send@bidv.com.vn');
-    assert.equal(await page.evaluate(() => sessionStorage.getItem('ot-workspace:session')), null);
-    await page.getByRole('button', { name: 'Thư mời / Quên mật khẩu' }).click();
+    await password.locator('[name=email]').fill(invited.email);
     await password.getByRole('button', { name: 'Gửi mã đặt lại mật khẩu' }).click();
     await sleepUntilMessage(page, 'Supabase sẽ gửi mã đặt lại mật khẩu');
-    assert.equal(await password.locator('[name=mode]').inputValue(), 'recovery');
     await password.locator('[name=otp]').fill('234567');
     await password.locator('[name=password]').fill('Fixture-new-password');
     await password.getByRole('button', { name: 'Lưu mật khẩu' }).click();
@@ -588,7 +610,7 @@ async function run() {
     assert.ok(calls.some(call => call.endpoint.endsWith('/verify') && call.fields.type === 'recovery'));
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
-    console.log('PASS Supabase mocked: registration, OTP, reload and expiry, user management, project membership, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
+    console.log('PASS Supabase mocked: registration, OTP, activation links, password recovery, reload and expiry, user management, project membership, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();
     server.kill();

@@ -1,7 +1,37 @@
-import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=11';
+import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=12';
 import { esc, option, projectOptions, table } from './ui.mjs';
 
 const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Đã khóa' };
+
+function renderActivationForm(id) {
+  return `<form id="${id}">
+    <div class="account-grid">
+      <label>Họ tên<input name="fullName" maxlength="200" required></label>
+      <label>Mã cán bộ<input name="code" inputmode="numeric" maxlength="8" pattern="[0-9]{1,8}" required></label>
+      <label>Email BIDV<input name="email" type="email" maxlength="254" required></label>
+    </div>
+    <button class="primary">Tạo tài khoản</button>
+  </form>`;
+}
+
+function bindActivationForm(form, project, { action, api, alive, notice, refresh }) {
+  form.onsubmit = event => {
+    event.preventDefault();
+    const fields = new FormData(form);
+    action(async () => {
+      const fullName = fields.get('fullName').trim();
+      if (!fullName) throw Error('Vui lòng nhập họ tên đầy đủ.');
+      await api.inviteUser({
+        email: normalizeEmail(fields.get('email')), fullName,
+        employeeCode: normalizeEmployeeCode(fields.get('code')), project
+      });
+      if (!alive()) return;
+      form.reset();
+      if (refresh) await refresh();
+      if (alive()) notice('Đã gửi liên kết kích hoạt đến email BIDV.');
+    });
+  };
+}
 
 export function renderUsers(state) {
   const people = state.profiles.filter(profile => profile.role === 'user');
@@ -31,24 +61,14 @@ export function renderUsers(state) {
       </form>
     </details>` : '<p>Chưa có người dùng thường để duyệt. Thêm người dùng bên dưới hoặc để cán bộ tự đăng ký bằng email BIDV.</p>'}
     <details${people.length ? '' : ' open'}><summary>Thêm người dùng</summary>
-      ${updated ? `<p>Gửi thư mời để tạo tài khoản và cho cán bộ tự đặt mật khẩu. Bạn cũng có thể lưu đăng ký trước để cán bộ tự đăng ký bằng email BIDV.</p>
-        ${table(['Email đăng ký trước', 'Họ tên', 'Mã cán bộ'], state.invitations.map(item => [item.email, item.full_name, item.employee_code]))}
-        <form id="user-invitation">
-          <div class="account-grid">
-            <label>Email BIDV<input name="email" type="email" maxlength="254" required></label>
-            <label>Họ tên<input name="fullName" maxlength="200" required></label>
-            <label>Mã cán bộ<input name="code" inputmode="numeric" maxlength="8" pattern="[0-9]{1,8}" required></label>
-          </div>
-          <div class="account-actions">
-            <button class="primary">Lưu đăng ký trước</button>
-            <button type="button" id="invite-user">Tạo tài khoản và gửi thư mời</button>
-          </div>
-        </form>
+      ${updated ? `<p>Cán bộ nhận liên kết kích hoạt và tự đặt mật khẩu qua email BIDV.</p>
+        ${renderActivationForm('user-invitation')}
+        ${state.invitations.length ? table(['Chờ kích hoạt', 'Họ tên', 'Mã cán bộ'], state.invitations.map(item => [item.email, item.full_name, item.employee_code])) : ''}
         ${state.invitations.length ? `<form id="cancel-invitation" class="month-actions">
-          <label>Đăng ký trước cần hủy<select name="email" required>
+          <label>Tài khoản chờ kích hoạt cần hủy<select name="email" required>
             <option value="">Chọn email</option>${state.invitations.map(item => option(item.email, item.email)).join('')}
           </select></label>
-          <button>Hủy đăng ký trước</button>
+          <button>Hủy kích hoạt</button>
         </form>` : ''}` : '<p>Chạy tệp 202611260004_user_management.sql trong Supabase SQL Editor, rồi bấm Tải lại dữ liệu.</p>'}
     </details>
     <details><summary>Phân công dự án</summary>
@@ -109,29 +129,10 @@ export function bindUsers(root, state, { submit, action, api, refresh, alive, no
     };
   }
   if (updated) {
-    submit('#user-invitation', 'ot_save_user_invitation', fields => ({
-      p_email: normalizeEmail(fields.email), p_full_name: fields.fullName.trim(),
-      p_employee_code: normalizeEmployeeCode(fields.code), p_active: true
-    }), 'Đã lưu hồ sơ đăng ký trước.');
-    const invitation = root.querySelector('#user-invitation');
-    invitation.querySelector('#invite-user').onclick = () => {
-      if (!invitation.reportValidity()) return;
-      const fields = new FormData(invitation);
-      action(async () => {
-        const fullName = fields.get('fullName').trim();
-        if (!fullName) throw Error('Vui lòng nhập họ tên đầy đủ.');
-        await api.inviteUser({
-          email: normalizeEmail(fields.get('email')), fullName,
-          employeeCode: normalizeEmployeeCode(fields.get('code'))
-        });
-        if (!alive()) return;
-        await refresh();
-        if (alive()) notice('Đã gửi thư mời. Cán bộ dùng mã trong email BIDV để đặt mật khẩu.');
-      });
-    };
+    bindActivationForm(root.querySelector('#user-invitation'), null, { action, api, alive, notice, refresh });
     if (state.invitations.length) submit('#cancel-invitation', 'ot_save_user_invitation', fields => ({
       p_email: normalizeEmail(fields.email), p_full_name: null, p_employee_code: null, p_active: false
-    }), 'Đã hủy hồ sơ đăng ký trước.');
+    }), 'Đã hủy kích hoạt tài khoản.');
   }
   submit('#admin-member', 'ot_set_member', fields => ({
     p_user: fields.user, p_project: fields.project, p_active: fields.active === 'true'
@@ -173,11 +174,17 @@ export function bindProjectMembers(root, state, { action, api, alive, notice, ex
         <label>Mã cán bộ đã kích hoạt<input name="code" required maxlength="8" inputmode="numeric" pattern="[0-9]{1,8}"></label>
         <button class="primary">Thêm vào dự án</button>
       </form>
+      <details>
+        <summary>Tạo tài khoản cho dự án này</summary>
+        <p>Cán bộ sẽ được thêm vào dự án sau khi kích hoạt qua email BIDV.</p>
+        ${renderActivationForm('team-activation')}
+      </details>
       ${rows.length ? `<form id="team-remove" class="month-actions">
         <label>Thành viên cần gỡ<select name="user" required><option value="">Chọn thành viên</option>
         ${rows.map(item => option(item.user_id, item.employee_code + ' · ' + item.full_name)).join('')}</select></label>
         <button>Gỡ khỏi dự án</button>
       </form>` : ''}`;
+    bindActivationForm(roster.querySelector('#team-activation'), project, { action, api, alive, notice });
     roster.querySelector('#team-add').onsubmit = event => {
       event.preventDefault();
       const code = new FormData(event.currentTarget).get('code');

@@ -45,11 +45,14 @@ const errorMessages = {
   OT_DAILY_REQUIRED: 'Kỳ này yêu cầu số giờ chi tiết theo từng ngày.',
   OT_PROFILE_EXISTS: 'Tài khoản đã tồn tại. Chọn tài khoản trong phần chỉnh sửa.',
   OT_INVITE_AUTH: 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.',
-  OT_INVITE_CONFIG: 'Thiếu cấu hình Supabase cho chức năng gửi lời mời.',
-  OT_USER_MIGRATION: 'Cần chạy migration quản lý người dùng 202611260004 trong Supabase.',
-  OT_INVITE_EXISTING: 'Email đã có tài khoản. Hãy dùng mật khẩu hiện có hoặc đặt lại mật khẩu. Hồ sơ đăng ký trước đã được lưu nếu tài khoản đang chờ duyệt.',
-  OT_INVITE_RATE: 'Đã đạt giới hạn gửi email. Hồ sơ đăng ký trước đã được lưu, hãy thử gửi lại sau.',
-  OT_INVITE_EMAIL: 'Chưa gửi được thư mời. Hồ sơ đăng ký trước đã được lưu. Kiểm tra SMTP và Auth Logs rồi thử lại.',
+  OT_INVITE_CONFIG: 'Thiếu cấu hình Supabase để gửi email kích hoạt.',
+  OT_INVITE_EXISTING: 'Email đã có tài khoản. Hãy dùng mật khẩu hiện có hoặc chọn Quên mật khẩu.',
+  OT_INVITE_RATE: 'Đã đạt giới hạn gửi email. Thông tin kích hoạt đã được lưu, hãy thử gửi lại sau.',
+  OT_INVITE_EMAIL: 'Chưa gửi được email. Thông tin kích hoạt đã được lưu. Kiểm tra SMTP và Auth Logs rồi thử lại.',
+  OT_ACTIVATION_MIGRATION: 'Cần chạy migration kích hoạt tài khoản 202611270001 trong Supabase.',
+  OT_ACTIVATION_RESERVED: 'Email này đã được chuẩn bị cho một đợt kích hoạt khác. Hãy liên hệ quản trị hệ thống.',
+  OT_ACTIVATION_SETUP: 'Supabase chưa lưu được thông tin kích hoạt. Hãy kiểm tra nhật ký Edge Functions.',
+  OT_PROJECT_INACTIVE: 'Dự án đã ngừng hoạt động.',
   OT_CODE_HAS_HISTORY: 'Mã cán bộ đã có lịch sử OT. Bạn vẫn có thể sửa họ tên hoặc trạng thái.',
   OT_MEMBER_MISSING: 'Tài khoản không còn là thành viên của dự án này.',
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
@@ -161,23 +164,28 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
     async verify(email, token) { await auth('verify', { email, token, type: 'signup' }, { signIn: true }); },
     async resend(email) { await auth('resend', { email, type: 'signup' }); },
     async sendPasswordReset(email) { await auth('recover', { email }); },
-    async verifyPasswordCode(email, token, type) {
-      const result = await auth('verify', { email, token, type });
+    async verifyPasswordCode(email, token) {
+      const result = await auth('verify', { email, token, type: 'recovery' });
       if (!result?.access_token) throw Error('Supabase chưa cấp phiên đặt mật khẩu.');
       return result.access_token;
+    },
+    async verifyActivation(tokenHash) {
+      const result = await auth('verify', { token_hash: tokenHash, type: 'invite' });
+      if (!result?.access_token || !result.user?.email) throw Error('Supabase chưa cấp phiên kích hoạt tài khoản.');
+      return { token: result.access_token, email: normalizeEmail(result.user.email) };
     },
     async setPassword(token, password) {
       await request('/auth/v1/user', { method: 'PUT', token, body: { password } });
     },
     async signIn(email, password) { await auth('token?grant_type=password', { email, password }, { signIn: true }); },
-    async inviteUser({ email, fullName, employeeCode }) {
+    async inviteUser({ email, fullName, employeeCode, project }) {
       const current = currentSession();
       try {
-        await request('/functions/v1/ot-invite-user', {
-          method: 'POST', token: current.token, body: { email, fullName, employeeCode }
+        await request('/functions/v1/ot-activate-user', {
+          method: 'POST', token: current.token, body: { email, fullName, employeeCode, project }
         });
       } catch (error) {
-        if (error.status === 404) throw Error('Cần triển khai Edge Function ot-invite-user để gửi thư mời trực tiếp.');
+        if (error.status === 404) throw Error('Cần triển khai Edge Function ot-activate-user để gửi email kích hoạt.');
         throw error;
       }
       if (current !== session) throw Error('Tài khoản đã thay đổi.');
