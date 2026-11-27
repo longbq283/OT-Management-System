@@ -372,10 +372,22 @@ async function run() {
     const dayOne = page.getByLabel('Giờ OT ngày 1', { exact: true });
     const dayTwo = page.getByLabel('Giờ OT ngày 2', { exact: true });
     const unit = page.getByLabel('Đơn vị (Ban/TT)', { exact: true });
+    assert.deepEqual(await unit.locator('option').allTextContents(), [
+      'Chọn đơn vị', 'Ban QLPTCB', 'Trung tâm PTPM', 'Trung tâm CNTT', 'TTDVKH', 'Ban KDV&TT',
+      'Trung tâm TNTTTM', 'Ban QLRRHĐ&TT', 'Trung tâm DL&PT', 'TTTT', 'Ban Sản phẩm Bán lẻ',
+      'Ban Kế toán', 'Trung tâm VHNHBL', 'Khác'
+    ]);
+    async function addUnit(name) {
+      await unit.selectOption({ label: 'Khác' });
+      const other = page.getByLabel('Tên đơn vị khác', { exact: true });
+      await other.fill(name);
+      await other.blur();
+      assert.equal(await unit.inputValue(), name.trim());
+    }
     assert.equal(await dayOne.isEditable(), true);
     assert.equal(await page.locator('#manual-ot button').isDisabled(), true);
     assert.equal(await page.locator('#report-form').isVisible(), false);
-    await unit.fill('Ban cũ giả lập');
+    await addUnit('  Ban cũ giả lập  ');
     await dayOne.fill('1,5');
 
     await operator.locator('[data-pane=calendar]').click();
@@ -443,10 +455,10 @@ async function run() {
     assert.equal(await summary.locator('tbody tr td').last().innerText(), '24');
     await dayTwo.fill('5,0');
     await confirm.check();
-    await unit.fill('Ban cũ giả lập đổi tên');
+    await addUnit('Ban cũ giả lập đổi tên');
     assert.equal(await confirm.isChecked(), false);
     assert.match(await summary.innerText(), /Ban cũ giả lập đổi tên/);
-    await unit.fill('Ban cũ giả lập');
+    await unit.selectOption('Ban cũ giả lập');
     await confirm.check();
     await saveButton.click();
     await sleepUntilMessage(page, 'Đã lưu OT cho 1 cán bộ.');
@@ -457,7 +469,8 @@ async function run() {
 
     await fillPeriod(page, '#manual-scope', 'pr-b');
     assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
-    await unit.fill('Ban mới giả lập');
+    assert.ok((await unit.locator('option').allTextContents()).includes('Ban cũ giả lập đổi tên'));
+    await addUnit('Ban mới giả lập');
     await dayOne.fill('12');
     await dayTwo.fill('13');
     await sleepUntilMessage(page, 'vượt hạn mức tháng 10 giờ');

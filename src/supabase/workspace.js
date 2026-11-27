@@ -5,7 +5,7 @@ import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=
 import { bindMigration } from './migration.js?v=7';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportAttendance, exportCsv, exportXlsx, getReport, renderReport } from './report.js?v=8';
-import { bindUpload, renderUpload } from './upload.js?v=9';
+import { bindUpload, renderUpload } from './upload.js?v=10';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };

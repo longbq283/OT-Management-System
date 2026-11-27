@@ -1,3 +1,4 @@
+import { bindUnitPicker, renderUnitPicker } from '../ui/organization-units.mjs';
 import { readExcel } from '../import/reader.mjs';
 import { cellText, colName, detectPeriod, detectTemplate, FIELD_LABELS, previewSheet } from '../import/engine.mjs';
 import { fromDatabase, periodKey, prepareRows } from './records.mjs';
@@ -207,8 +208,11 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         entry.employeeId === profile.employee_code && (entry.year < year || (entry.year === year && entry.month <= month)))
         .sort((a, b) => b.year - a.year || b.month - a.month)[0]?.unit;
       sheet.innerHTML = `<form id="manual-ot">
-        <label class="manual-unit">Đơn vị (Ban/TT)<input name="unit" required maxlength="250" value="${esc(draft?.unit ?? (current?.unit || previousUnit || ''))}"
-          placeholder="Nhập đơn vị của bạn trong kỳ này"></label>
+        <div class="manual-unit">${renderUnitPicker({
+          id: 'manual-unit', scope: profile.id, label: 'Đơn vị (Ban/TT)', required: true,
+          selected: draft?.unit ?? (current?.unit || previousUnit || ''),
+          history: state.entries.filter(entry => entry.employeeId === profile.employee_code).map(entry => entry.unit)
+        })}</div>
         ${monthLegend()}
         <p class="account-muted">${editable ? 'Nhập số giờ, ví dụ 1,5 hoặc 1:30. Ô trống tính 0 giờ.'
           : saved ? 'Kỳ đang khóa. Bạn có thể nhập nháp trong phiên này và lưu khi quản trị viên mở kỳ.'
@@ -227,7 +231,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         <section class="manual-review" aria-labelledby="manual-review-title">
           <h3 id="manual-review-title">Dự kiến lưu OT · ${esc(projectCode)} · ${month}/${year}</h3>
           <div id="manual-summary"></div>
-          <p class="account-muted" id="manual-unit-required" hidden>Điền đơn vị (Ban/TT) để xác nhận lưu.</p>
+          <p class="account-muted" id="manual-unit-required" hidden>Chọn đơn vị (Ban/TT) để xác nhận lưu.</p>
           <label><input type="checkbox" name="confirmed" required disabled> ${current
             ? 'Tôi xác nhận thay thế bản OT của mình trong kỳ này.'
             : 'Tôi xác nhận kỳ và dữ liệu sẽ lưu.'}</label>
@@ -236,8 +240,13 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       </form>`;
       const form = sheet.querySelector('form');
       const inputs = [...form.querySelectorAll('input[name=duration]')];
+      const unitPicker = bindUnitPicker(form.querySelector('#manual-unit'), { scope: profile.id, onInput: editDraft });
       function keepDraft() {
-        drafts.set(key, { unit: form.elements.unit.value, values: inputs.map(input => input.value) });
+        drafts.set(key, { unit: unitPicker.value(), values: inputs.map(input => input.value) });
+      }
+      function editDraft() {
+        keepDraft();
+        updateDraft();
       }
       const confirmed = form.elements.confirmed;
       const saveButton = form.querySelector('button[type=submit]');
@@ -255,7 +264,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
           else input.removeAttribute('aria-invalid');
         });
         const error = issues.find(Boolean);
-        const unit = form.elements.unit.value.trim();
+        const unit = unitPicker.value();
         const record = dailyRecord(minutes, types, profile, selection, unit);
         const canSave = editable && !error && Boolean(unit) && record.totalMinutes > 0;
         prepared = canSave ? buildPreview(scope, [record]) : null;
@@ -267,7 +276,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         saveButton.disabled = true;
       }
       updateDraft();
-      for (const input of [...inputs, form.elements.unit]) input.oninput = () => { keepDraft(); updateDraft(); };
+      for (const input of inputs) input.oninput = editDraft;
       confirmed.onchange = () => { saveButton.disabled = !prepared || !confirmed.checked; };
       form.onpaste = event => {
         const first = inputs.indexOf(event.target);
@@ -287,13 +296,16 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         event.preventDefault();
         if (!prepared || !confirmed.checked || !picker.reportValidity()) return;
         action(async () => {
+          unitPicker.finish();
+          if (!prepared || !confirmed.checked) return;
           const { rows, replace } = prepared;
-          const controls = [...picker.querySelectorAll('input, select'), ...inputs, form.elements.unit, confirmed];
-          controls.forEach(control => { control.disabled = true; });
+          const controls = [...picker.querySelectorAll('input, select'), ...inputs, ...unitPicker.controls, confirmed];
+          const enabled = controls.filter(control => !control.disabled);
+          enabled.forEach(control => { control.disabled = true; });
           try {
             await save(scope, rows, replace, () => drafts.delete(key));
           } finally {
-            controls.forEach(control => { control.disabled = false; });
+            enabled.forEach(control => { control.disabled = false; });
           }
         });
       };
