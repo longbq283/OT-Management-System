@@ -44,6 +44,16 @@ Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng t
 3. Trong **Authentication → Emails → Invite user**, đặt **Subject** thành “Kích hoạt tài khoản OT Workspace”. Trong **Body → Source**, dán toàn bộ [mẫu email kích hoạt](../supabase/templates/account-activation.html) rồi bấm **Save changes**. Mẫu chứa liên kết về OT Workspace với `{{ .TokenHash }}`. Giữ mẫu **Reset password** với `{{ .Token }}` và mẫu **Confirm signup** cho đăng ký thông thường.
 4. Gửi thử từ website đến một email BIDV mới. Người nhận mở liên kết, nhập mật khẩu mới rồi bấm **Kích hoạt tài khoản**. Nếu báo lỗi gửi email, kiểm tra **Logs → Auth** và log của function. Email đã gửi theo mẫu OTP cũ có thể được thay bằng liên kết mới bằng cách gửi lại từ biểu mẫu tạo tài khoản.
 
+## Duyệt OT theo nhóm và kích hoạt tự động
+
+1. Trong **SQL Editor**, chạy [202611270002_members_and_ot_approval.sql](../supabase/migrations/202611270002_members_and_ot_approval.sql) sau migration `202611270001_account_activation.sql`. Chạy mỗi migration một lần. Website tải tính năng mới khi Supabase đã nhận các RPC bổ sung.
+2. Cán bộ xác minh email BIDV bằng OTP hoặc liên kết kích hoạt. Sau xác minh, người tự đăng ký được kích hoạt hồ sơ khi vào workspace và cần được phân công dự án. Mã cán bộ đã có chủ vẫn cần quản trị hệ thống đối chiếu.
+3. **Quản trị hệ thống → Quản lý → Quản lý người dùng** cho phép sửa họ tên, mã cán bộ và đơn vị, gửi mã đặt lại mật khẩu tới email BIDV, tạm khóa, mở khóa hoặc xóa tài khoản khỏi OT Workspace. Xóa thu hồi quyền dự án và giữ lịch sử OT. Mật khẩu mới do cán bộ đặt bằng mã nhận qua email. Email hiển thị là định danh Supabase Auth hiện tại.
+4. **Phân công dự án** của quản trị hệ thống và **Thành viên dự án** của quản trị dự án có danh sách chọn nhiều. Tìm bằng mã cán bộ hoặc họ tên để phân công cùng lúc. Quản trị dự án chỉ thao tác trên dự án được giao.
+5. Đặt đơn vị hồ sơ của các cán bộ cần cấu hình thành **Ban QLPTCB** trước khi dùng **Cấu hình nhóm duyệt**. Migration gợi ý đơn vị hồ sơ từ bản OT có hiệu lực gần nhất. Chọn trưởng nhóm, người duyệt thay và các cán bộ của nhóm trong dự án. Nhóm chưa bật duyệt và đơn vị khác tiếp tục lưu trực tiếp.
+6. Trưởng nhóm vào **Thành viên → Duyệt bảng chấm OT**, chọn dự án và kỳ. Bảng chấm chỉ xem, có đủ ngày, giới hạn và tổng OT. Có thể duyệt riêng, duyệt các phiếu chọn, duyệt toàn bộ phiếu chờ trong kỳ hoặc trả lại kèm lý do. Phiếu của chính người duyệt cần người khác được phân công. Quyền duyệt và việc ghi bản hiệu lực được kiểm tra trên Supabase.
+7. Khóa kỳ dừng gửi mới nhưng vẫn cho phép xử lý các phiếu đã gửi. Nếu lịch hoặc giới hạn đã đổi, trả lại phiếu để cán bộ gửi lại theo lịch mới. Bản đang hiệu lực được giữ đến khi bản sửa được duyệt. Các dòng Excel thuộc nhóm duyệt cũng được chuyển vào hàng chờ. Phần **Chuyển dữ liệu cũ** của quản trị hệ thống nằm trong **Nhập Excel**.
+
 ## Chọn vai trò và lịch làm việc
 
 - Một hồ sơ có thể đồng thời giữ ba vai trò. **Quản trị hệ thống** quản lý toàn hệ thống. **Quản trị dự án** xem báo cáo và chỉnh lịch, mở/khóa kỳ ở các dự án được giao quyền quản trị. **Thành viên** chỉ xem, xuất và nhập giờ của chính mình trong các dự án được phân công làm thành viên. Quản trị hệ thống có thể cấp quyền quản trị dự án và phân công thành viên cho chính tài khoản mình nếu cần cả ba vai trò.

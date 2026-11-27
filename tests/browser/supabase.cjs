@@ -31,6 +31,12 @@ const passwordSetupToken = 'fixture-password-setup';
 let networkError = false;
 let duplicate = false;
 let signupFailure;
+let managedFixture = false;
+const joined = { id:'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', email:'fixture-join@bidv.com.vn',
+  full_name:'Nguyễn Minh Châu', requested_employee_code:'00000458', employee_code:null, role:'user', status:'pending' };
+const approvalRows = [1,2].map(id => ({id,state:'pending',group:'Nhóm giả lập',days:Array(30).fill('NT'),
+  limits:Array(30).fill(120),row:{employee_code:'00000023',full_name:'Cán bộ ' + id,unit:'Ban QLPTCB',
+  nt_minutes:60,nn_minutes:0,days:[{date:'2026-11-02',type:'NT',minutes:60}]}}));
 
 async function routeRequest(route) {
   const req = route.request();
@@ -38,7 +44,7 @@ async function routeRequest(route) {
   const endpoint = url.pathname;
   const fields = req.postDataJSON();
   const token = req.headers().authorization?.slice('Bearer '.length);
-  const actor = [account, admin, missing, invited].find(user => token === 'fixture-session-' + user.id);
+  const actor = [account, admin, missing, invited, joined].find(user => token === 'fixture-session-' + user.id);
   calls.push({ endpoint, fields, actor: actor?.id, userFilter: url.searchParams.get('user_id') });
   const send = (value, status = 200) => route.fulfill({ status, json: value,
     headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
@@ -70,12 +76,42 @@ async function routeRequest(route) {
   }
   if (endpoint.endsWith('/resend')) return send({});
   if (endpoint.endsWith('/verify')) return fields.token === '123456' ? send(session(account)) : send({ error_code: 'otp_expired' }, 403);
-  if (endpoint.endsWith('/token')) return send(session([admin, account, missing, invited].find(user => user.email === fields.email)));
+  if (endpoint.endsWith('/token')) return send(session([admin, account, missing, invited, joined].find(user => user.email === fields.email)));
   if (endpoint.endsWith('/logout')) return route.fulfill({ status: 204 });
   if (!actor) return send({}, 401);
+  if (managedFixture && endpoint.endsWith('/ot_activate_verified_profile')) {
+    assert.equal(actor,joined);
+    joined.status = 'active';
+    joined.employee_code = joined.requested_employee_code;
+    return send(true);
+  }
+  if (managedFixture && endpoint.endsWith('/ot_approval_home')) {
+    return send({ review_projects:actor === admin ? ['pr-b'] : [], submit_projects:[] });
+  }
+  if (managedFixture && endpoint.endsWith('/ot_list_approval_requests')) return send(approvalRows);
+  if (managedFixture && endpoint.endsWith('/ot_decide_approval_requests')) {
+    assert.equal(actor,admin);
+    for (const item of approvalRows) if (fields.p_ids.includes(item.id)) item.state = fields.p_approve ? 'approved' : 'returned';
+    return send(fields.p_ids.length);
+  }
+  if (managedFixture && endpoint.endsWith('/ot_list_approval_groups')) return send([]);
+  if (managedFixture && endpoint.endsWith('/ot_project_candidates')) return send([admin,account,invited,joined]
+    .filter(user => user.status === 'active').map(user => ({ ...user,user_id:user.id,organization_unit:'Ban QLPTCB',
+      assigned:memberships.some(item => item.project_id === fields.p_project && item.user_id === user.id && item.active) })));
+  if (managedFixture && endpoint.endsWith('/ot_set_members')) {
+    for (const user of fields.p_users) memberships.push({project_id:fields.p_project,user_id:user,active:true});
+    return send(null);
+  }
+  if (managedFixture && endpoint.endsWith('/ot_admin_account')) {
+    assert.equal(actor,admin);
+    assert.equal(fields.p_user,joined.id);
+    Object.assign(joined,{full_name:fields.p_name,organization_unit:fields.p_unit});
+    return send(null);
+  }
   if (endpoint.endsWith('/ot_profiles')) {
     const id = url.searchParams.get('id');
-    return send(id ? [account, admin, invited].filter(user => id === 'eq.' + user.id) : [account, admin]);
+    return send(id ? [account, admin, invited, joined].filter(user => id === 'eq.' + user.id)
+      : managedFixture ? [account,admin,invited,joined] : [account,admin]);
   }
   const inScope = (field, value) => {
     const filter = url.searchParams.get(field);
@@ -117,7 +153,7 @@ async function routeRequest(route) {
   if (endpoint.endsWith('/ot_list_project_members')) {
     assert.ok(manages(fields.p_project));
     return send(memberships.filter(row => row.project_id === fields.p_project && row.active).map(row => {
-      const person = [account, admin].find(item => item.id === row.user_id);
+      const person = [account, admin, invited, joined].find(item => item.id === row.user_id);
       return { user_id: row.user_id, employee_code: person.employee_code, full_name: person.full_name, status: person.status };
     }));
   }
@@ -631,6 +667,47 @@ async function run() {
     assert.ok(calls.some(call => call.endpoint.endsWith('/verify') && call.fields.type === 'recovery'));
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+    managedFixture = true;
+    const newMember = await context.newPage();
+    await newMember.goto(base + '/kiem-tra-tai-khoan.html');
+    await login(newMember,joined);
+    await newMember.getByText(/Nguyễn Minh Châu.*Đang hoạt động/).waitFor();
+    await newMember.getByText(/Bạn chưa có dự án được phân công/).waitFor();
+    const manager = await context.newPage();
+    await manager.goto(base + '/kiem-tra-tai-khoan.html#nhap-ot');
+    await login(manager,admin);
+    assert.equal(await manager.locator('[data-pane=backup]').count(),0);
+    await manager.locator('[data-pane=review]').click();
+    const details = manager.locator('#approval-review-detail .month-sheet');
+    await details.waitFor();
+    assert.equal(await details.locator('thead th').count(),31);
+    assert.equal(await details.locator('input').count(),0);
+    await manager.getByRole('checkbox',{name:'Chọn tất cả phiếu chờ'}).check();
+    await manager.getByRole('button',{name:'Duyệt đã chọn'}).click();
+    await manager.getByRole('dialog').getByRole('button',{name:'Xác nhận duyệt',exact:true}).click();
+    await sleepUntilMessage(manager,'Đã duyệt 2 phiếu OT.');
+    await manager.locator('[data-role=system]').click();
+    await manager.locator('[data-pane=management]').click();
+    await manager.locator('#admin-account [name=user]').selectOption(joined.id);
+    await manager.locator('#account-organization-unit').selectOption('Ban QLPTCB');
+    await manager.getByRole('button',{name:'Lưu chỉnh sửa'}).click();
+    await sleepUntilMessage(manager,'Đã lưu hồ sơ tài khoản.');
+    assert.equal(joined.organization_unit,'Ban QLPTCB');
+    assert.equal(await manager.locator('[data-pane=backup]').count(),0);
+    await manager.getByText('Phân công dự án',{exact:true}).click();
+    const assignment = manager.locator('#admin-member');
+    await assignment.locator('[name=project]').selectOption('pr-b');
+    await assignment.locator('summary').click();
+    const memberSearch = assignment.locator('[data-member-search]');
+    await memberSearch.fill('nguyen minh chau');
+    await assignment.getByRole('checkbox',{name:/Nguyễn Minh Châu/}).check();
+    await memberSearch.fill('00000457');
+    await assignment.getByRole('checkbox',{name:/00000457/}).check();
+    await assignment.getByRole('button',{name:'Lưu phân công'}).click();
+    await sleepUntilMessage(manager,'Đã cập nhật phân công cho 2 cán bộ.');
+    assert.ok(memberships.some(item => item.project_id === 'pr-b' && item.user_id === joined.id));
+    assert.ok(memberships.some(item => item.project_id === 'pr-b' && item.user_id === invited.id));
+    console.log('PASS Supabase approval UI: auto activation, read-only month grid, bulk review, account editing and searchable multi-assignment.');
     console.log('PASS Supabase mocked: registration, OTP, activation links, password recovery, reload and expiry, user management, project membership, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
   } finally {
     await browser?.close();

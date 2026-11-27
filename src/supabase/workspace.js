@@ -1,11 +1,12 @@
+import { approvalPane, groupPane, mountApproval, mountApprovalGroups } from './approvals.js';
 import { bindAdmin, bindPeriodAdmin, renderAdmin, renderPeriodAdmin, renderProjectPermissions } from './admin.js?v=11';
-import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js?v=3';
+import { bindProjectMembers, bindUsers, renderProjectMembers, renderUsers } from './users.js?v=4';
 import { renderCalendar, renderCalendarPeriod } from './calendar.js?v=7';
 import { defaultLimit, durationMinutes, durationValue } from './month-grid.js?v=7';
 import { bindMigration } from './migration.js?v=7';
 import { fromDatabase, periodKey } from './records.mjs';
 import { exportAttendance, exportCsv, exportXlsx, getReport, renderReport } from './report.js?v=8';
-import { bindUpload, renderUpload } from './upload.js?v=11';
+import { bindUpload, renderUpload } from './upload.js?v=12';
 import { download } from './ui.mjs';
 
 const roleNames = { system: 'Quản trị hệ thống', project: 'Quản trị dự án', member: 'Thành viên' };
@@ -80,6 +81,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     const central = state.role === 'system';
     const member = state.role === 'member';
     const canManage = state.role === 'project' || central;
+    const reviewer = member && state.approvalAccess?.review_projects.length;
     const open = new Set([...root.querySelectorAll('details[open] > summary')].map(summary => summary.textContent));
     const calendar = canManage && state.projects.length && state.calendars !== null;
     const upload = central || (member && state.projects.length);
@@ -103,19 +105,22 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         : '<section class="account-card"><h2>Nhập OT cá nhân</h2><p>Bạn chưa có dự án được phân công. Quản trị hệ thống cần thêm bạn vào danh sách thành viên của dự án.</p></section>']] : []),
       ['report', 'Báo cáo', renderReport(state, getReport(state))],
       ...(central ? [['management', 'Quản lý', renderAdmin(state) + renderUsers(state) + renderProjectPermissions(state)],
-        ['import', 'Nhập Excel', renderUpload(state, profile)]] : []),
+        ['import', 'Nhập Excel', renderUpload(state, profile) + `<section class="account-card">
+          <details><summary>Chuyển dữ liệu cũ</summary>
+            <p>Chọn bản sao từ IndexedDB hoặc JSON dùng chung đã tải riêng.</p>
+            <form id="legacy-migration">
+              <label>JSON sao lưu cũ<input type="file" name="file" accept=".json,application/json" required></label>
+              <button class="primary">Kiểm tra bản sao và đối chiếu</button>
+            </form><div id="migration-preview"></div>
+          </details></section>`]] : []),
       ...(state.role === 'project' ? [['members', 'Thành viên dự án', renderProjectMembers(state)]] : []),
-      ['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>
+      ...(canManage ? [['groups', 'Cấu hình nhóm duyệt', state.approvalAccess ? groupPane :
+        '<section class="account-card"><h2>Cấu hình nhóm duyệt</h2><p>Cần chạy migration 202611270002_members_and_ot_approval.sql trên Supabase.</p></section>']] : []),
+      ...(reviewer ? [['review', 'Duyệt bảng chấm OT', approvalPane]] : []),
+      ...(member && !reviewer ? [['backup', 'Sao lưu', `<section class="account-card"><h2>Sao lưu dữ liệu</h2>
         <p>Bản JSON chứa dữ liệu trong phạm vi vai trò đang sử dụng.</p>
         <button type="button" id="export-backup">Tải JSON sao lưu</button>
-        ${central ? `<details><summary>Chuyển dữ liệu cũ</summary>
-          <p>Chọn bản sao từ IndexedDB hoặc JSON dùng chung đã tải riêng.</p>
-          <form id="legacy-migration">
-            <label>JSON sao lưu cũ<input type="file" name="file" accept=".json,application/json" required></label>
-            <button class="primary">Kiểm tra bản sao và đối chiếu</button>
-          </form><div id="migration-preview"></div>
-        </details>` : ''}
-      </section>`]
+      </section>`]] : [])
     ];
     if (!panes.some(([id]) => id === state.pane)) state.pane = panes[0][0];
     root.innerHTML = roleNavigation() + `<nav class="workspace-panes" aria-label="Chức năng">
@@ -125,7 +130,13 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       `<div id="pane-${id}" data-workspace-pane="${id}" ${state.pane === id ? '' : 'hidden'}>${content}</div>`).join('');
     bindNavigation();
     const loadProjectMembers = state.role === 'project' ? bindProjectMembers(root, state, { action, api, alive, notice, expire }) : null;
-    if (state.pane === 'members') void loadProjectMembers?.();
+    const approvalOptions = { api,action,alive,notice,refresh };
+    const loads = { groups:mountApprovalGroups(root.querySelector('#approval-groups'),state,approvalOptions),
+      review:mountApproval(root.querySelector('#approval-requests'),state,approvalOptions) };
+    async function loadActivePane() {
+      if (state.pane === 'members') await loadProjectMembers?.();
+      else await loads[state.pane]?.();
+    }
     for (const button of root.querySelectorAll('[data-pane]')) {
       button.onclick = () => {
         if (busy) return;
@@ -136,7 +147,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
           item.setAttribute('aria-current', current ? 'page' : 'false');
           root.querySelector('#pane-' + item.dataset.pane).hidden = !current;
         }
-        if (state.pane === 'members') void loadProjectMembers?.();
+        void action(loadActivePane);
       };
     }
     for (const summary of root.querySelectorAll('details > summary')) {
@@ -166,7 +177,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     }
     bindReport();
 
-    on('#export-backup', 'click', () => action(async () => {
+    if (root.querySelector('#export-backup')) on('#export-backup', 'click', () => action(async () => {
       const snapshot = { format: 'ot-management-supabase-export', schemaVersion: 1, exportedAt: new Date().toISOString(),
         projects: state.projects, entries: state.rawEntries, periods: state.periods, calendars: state.calendars,
         ...(central && { profiles: state.profiles, memberships: state.memberships, audit: state.audit, projectAdmins: state.projectAdmins }) };
@@ -193,6 +204,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       }
     }
     if (calendar) renderCalendarEditor();
+    return loadActivePane();
   }
 
   function renderCalendarEditor() {
@@ -291,10 +303,15 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
       return;
     }
     const ownGrant = { user_id: 'eq.' + profile.id, active: 'eq.true', select: 'project_id', order: 'project_id.asc' };
-    const [membership, grants] = await Promise.all([
-      api.list('ot_project_members', ownGrant), optionalTable(api.list('ot_project_admins', ownGrant))
+    const [membership, grants, approvalAccess] = await Promise.all([
+      api.list('ot_project_members', ownGrant), optionalTable(api.list('ot_project_admins', ownGrant)),
+      api.rpc('ot_approval_home',{}).catch(error => {
+        if (error.code === 'PGRST202' || (error.status === 404 && !error.code)) return null;
+        throw error;
+      })
     ]);
     if (!alive()) return;
+    state.approvalAccess = approvalAccess;
     state.roles = [
       ...(own.role === 'admin' ? ['system'] : []),
       ...(grants?.length ? ['project'] : []),
@@ -330,7 +347,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
         ...(!central && { id: filter.project_id }) }),
       scoped('ot_periods', { select: 'project_id,year,month,is_open,revision,data_revision', order: 'project_id.asc,year.asc,month.asc', ...filter }),
       scoped('ot_entries', { select: '*', order: 'id.desc', ...filter, ...(member && { user_id: ownGrant.user_id }) }),
-      central ? api.list('ot_profiles', { select: 'id,email,full_name,requested_employee_code,employee_code,role,status', order: 'id.asc' }) : [],
+      central ? api.list('ot_profiles', { select: 'id,email,full_name,requested_employee_code,employee_code,role,status' + (approvalAccess ? ',organization_unit,deleted_at' : ''), order: 'id.asc' }) : [],
       central ? api.list('ot_project_members', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : [],
       central ? api.list('ot_audit_events', { select: '*', order: 'id.desc' }) : [],
       central && grants !== null ? api.list('ot_project_admins', { select: 'project_id,user_id,active', order: 'project_id.asc,user_id.asc' }) : null,
@@ -358,7 +375,7 @@ export function mountWorkspace(root, { api, profile, notice, expire }) {
     }
     Object.assign(state, { projects, periods, entries: entries.map(fromDatabase), rawEntries: entries, profiles, memberships, audit,
       projectAdmins, invitations, calendars, limitsEnabled, calendarIndex, periodIndex: byPeriod(periods) });
-    render();
+    await render();
   }
 
   root.innerHTML = '<section class="account-card"><p>Đang tải dữ liệu OT…</p><button type="button" id="retry-ot">Tải lại dữ liệu</button></section>';

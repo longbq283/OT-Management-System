@@ -19,6 +19,11 @@ export function normalizeEmail(value) {
 }
 
 const errorMessages = {
+  OT_GROUP_UNIT: 'Thành viên và người duyệt phải là cán bộ Ban QLPTCB đang hoạt động trong dự án.',
+  OT_GROUP_TRANSFER: 'Cán bộ đã thuộc nhóm khác. Hãy tải lại danh sách trước khi chuyển.',
+  OT_APPROVAL_REVIEWER: 'Nhóm chưa có người duyệt khác phù hợp. Hãy liên hệ quản trị dự án.',
+  OT_APPROVAL_CALENDAR: 'Lịch hoặc giới hạn giờ đã thay đổi. Hãy trả lại để cán bộ gửi lại theo lịch mới.',
+  OT_APPROVAL_STALE: 'Phiếu hoặc bảng OT đã thay đổi. Hãy tải lại dữ liệu trước khi xử lý.',
   email_exists: 'Email đã đăng ký. Hãy đăng nhập hoặc gửi lại mã nếu chưa xác nhận.',
   user_already_exists: 'Email đã đăng ký. Hãy đăng nhập hoặc gửi lại mã nếu chưa xác nhận.',
   email_not_confirmed: 'Email chưa xác nhận. Hãy gửi lại và nhập mã OTP đăng ký.',

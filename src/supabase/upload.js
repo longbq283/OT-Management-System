@@ -162,7 +162,10 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
     if (!alive()) return;
     onSaved?.();
     await refresh();
-    if (alive()) notice('Đã lưu OT cho ' + rows.length + ' cán bộ.');
+    const queued = !scope.batch && state.approvalAccess?.submit_projects.includes(scope.project);
+    if (alive()) notice(queued ? 'Đã gửi phiếu OT để duyệt.' : scope.batch && state.approvalAccess
+      ? 'Đã xử lý OT cho ' + rows.length + ' cán bộ. Phiếu thuộc nhóm cần duyệt đã được chuyển đến người duyệt.'
+      : 'Đã lưu OT cho ' + rows.length + ' cán bộ.');
   }
 
   function showExcelPreview(scope, records, warnings) {
@@ -209,6 +212,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
       const byDay = new Map(current?.days.map(day => [Number(day.date.slice(-2)), day.minutes]));
       const key = periodKey(project, year, month);
       const draft = drafts.get(key);
+      const requiresApproval = state.approvalAccess?.submit_projects.includes(project);
       const previousUnit = state.entries.filter(entry => entry.status === 'active' && entry.unit &&
         entry.employeeId === profile.employee_code && (entry.year < year || (entry.year === year && entry.month <= month)))
         .sort((a, b) => b.year - a.year || b.month - a.month)[0]?.unit;
@@ -232,6 +236,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
               aria-label="Giờ OT ngày ${day}" value="${esc(draft?.values[day - 1] ?? (byDay.has(day) ? durationValue(byDay.get(day)) : ''))}">` }
           ]
         })}
+        ${state.approvalAccess ? '<p class="account-muted" id="manual-approval-status" role="status"></p>' : ''}
         <div class="month-actions"><output aria-live="polite" id="manual-total"></output></div>
         <section class="manual-review" aria-labelledby="manual-review-title">
           <h3 id="manual-review-title">Dự kiến lưu OT · ${esc(projectCode)} · ${month}/${year}</h3>
@@ -240,11 +245,20 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
           <label><input type="checkbox" name="confirmed" required disabled> ${current
             ? 'Tôi xác nhận thay thế bản OT của mình trong kỳ này.'
             : 'Tôi xác nhận kỳ và dữ liệu sẽ lưu.'}</label>
-          <button type="submit" class="primary" disabled>Xác nhận lưu OT</button>
+          <button type="submit" class="primary" disabled>${requiresApproval ? 'Gửi duyệt OT' : 'Xác nhận lưu OT'}</button>
         </section>
       </form>`;
       const form = sheet.querySelector('form');
       const inputs = [...form.querySelectorAll('input[name=duration]')];
+      const approvalStatus = form.querySelector('#manual-approval-status');
+      if (approvalStatus) void api.rpc('ot_my_approval_request',{p_project:project,p_year:year,p_month:month}).then(item => {
+        if (!alive() || !approvalStatus.isConnected) return;
+        approvalStatus.textContent = item?.state === 'pending' ? 'Phiếu OT của bạn đang chờ duyệt.'
+          : item?.state === 'returned' ? 'Phiếu OT đã được trả lại: ' + item.reason
+          : item?.state === 'approved' ? 'Phiếu OT của kỳ này đã được duyệt.' : '';
+      }).catch(error => {
+        if (alive() && approvalStatus.isConnected) approvalStatus.textContent = error.message;
+      });
       const unitPicker = bindUnitPicker(form.querySelector('#manual-unit'), { scope: profile.id, onInput: editDraft });
       function keepDraft() {
         drafts.set(key, { unit: unitPicker.value(), values: inputs.map(input => input.value) });

@@ -1,5 +1,5 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=12';
-import { mountWorkspace } from '../../src/supabase/workspace.js?v=15';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=13';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=16';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');
@@ -95,12 +95,19 @@ async function showProfile() {
     id: 'eq.' + ownId
   };
   let [profile] = await api.list('ot_profiles', fields);
+  let automaticActivationAvailable = false;
   if (profile?.status === 'pending') {
     try {
-      if (await api.rpc('ot_consume_user_invitation', {})) [profile] = await api.list('ot_profiles', fields);
+      const invited = await api.rpc('ot_consume_user_invitation', {});
+      const activated = !invited && await api.rpc('ot_activate_verified_profile', {});
+      automaticActivationAvailable = true;
+      if (invited || activated) [profile] = await api.list('ot_profiles', fields);
     } catch (error) {
-      if (error.code === '23505') notice('Mã cán bộ trong hồ sơ đăng ký trước đang bị trùng. Hãy liên hệ quản trị hệ thống.', true);
-      else if (error.code !== 'PGRST202') throw error;
+      if (error.code === '23505') {
+        automaticActivationAvailable = true;
+        notice('Mã cán bộ đã được sử dụng. Vui lòng liên hệ quản trị hệ thống để kiểm tra hồ sơ.', true);
+      }
+      else if (error.code !== 'PGRST202' && !(error.status === 404 && !error.code)) throw error;
     }
   }
   const heading = document.createElement('h1');
@@ -117,7 +124,7 @@ async function showProfile() {
     return;
   }
   text.textContent = [profile.full_name, profile.email, profile.employee_code || profile.requested_employee_code,
-    profile.role === 'admin' ? 'Quản trị hệ thống' : 'Người dùng', statuses[profile.status]].filter(Boolean).join(' · ');
+    profile.role === 'admin' ? 'Quản trị hệ thống' : 'Người dùng', (profile.status === 'pending' && automaticActivationAvailable) ? 'Chưa kích hoạt' : statuses[profile.status]].filter(Boolean).join(' · ');
   if (profile.status === 'active') {
     const mounted = mountWorkspace(workspace, { api, profile, notice, expire });
     closeWorkspace = mounted.close;

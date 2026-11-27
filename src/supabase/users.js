@@ -1,4 +1,6 @@
-import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=12';
+import { bindMemberPicker, renderMemberPicker } from './member-picker.js';
+import { bindUnitPicker, renderUnitPicker } from '../ui/organization-units.mjs';
+import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=13';
 import { esc, option, projectOptions, table } from './ui.mjs';
 
 const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Đã khóa' };
@@ -34,19 +36,36 @@ function bindActivationForm(form, project, { action, api, alive, notice, refresh
 }
 
 export function renderUsers(state) {
-  const people = state.profiles.filter(profile => profile.role === 'user');
+  const managed = Boolean(state.approvalAccess);
+  const people = state.profiles.filter(profile => profile.role === 'user' && !profile.deleted_at);
   const accounts = people.map(profile => option(profile.id, profile.full_name + ' · ' + profile.email)).join('');
-  const assignable = state.profiles.filter(profile => profile.employee_code)
+  const assignable = state.profiles.filter(profile => profile.employee_code && !profile.deleted_at)
     .map(profile => option(profile.id, profile.employee_code + ' · ' + profile.full_name)).join('');
   const person = id => state.profiles.find(profile => profile.id === id)?.full_name || id;
   const project = id => state.projects.find(item => item.id === id)?.code || id;
   const updated = state.invitations !== null;
   return `<section class="account-card">
     <h2>Quản lý người dùng</h2>
-    ${table(['Họ tên', 'Email BIDV', 'Mã cán bộ', 'Quyền hệ thống', 'Trạng thái'], state.profiles.map(profile => [
+    ${table(['Họ tên', 'Email BIDV', 'Mã cán bộ', ...(managed ? ['Đơn vị (Ban/TT)'] : []), 'Quyền hệ thống', 'Trạng thái'], state.profiles.map(profile => [
       profile.full_name, profile.email, profile.employee_code || profile.requested_employee_code,
-      profile.role === 'admin' ? 'Quản trị hệ thống' : 'Người dùng', labels[profile.status]]))}
-    ${people.length ? `<details open><summary>Chỉnh sửa và duyệt tài khoản</summary>
+      ...(managed ? [profile.organization_unit || '—'] : []),
+      profile.role === 'admin' ? 'Quản trị hệ thống' : 'Người dùng', profile.deleted_at ? 'Đã xóa' : managed && profile.status === 'pending' ? 'Chưa kích hoạt' : labels[profile.status]]))}
+    ${managed && people.length ? `<details open><summary>Chỉnh sửa và quản lý tài khoản</summary>
+      <form id="admin-account">
+        <div class="account-grid">
+          <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${accounts}</select></label>
+          <label>Họ tên<input name="fullName" required maxlength="200"></label>
+          <label>Mã cán bộ<input name="code" required inputmode="numeric" maxlength="8" pattern="[0-9]{1,8}"></label>
+          <label>Email BIDV<input name="email" type="email" readonly></label>
+        </div>
+        <div id="admin-organization-unit"></div>
+        <div class="account-actions">
+          <button class="primary" type="submit" disabled>Lưu chỉnh sửa</button>
+          <button id="admin-send-reset" type="button" disabled>Gửi mã đặt lại mật khẩu</button>
+          <button id="admin-lock-account" type="button" disabled>Tạm khóa tài khoản</button>
+          <button id="admin-delete-account" type="button" disabled>Xóa tài khoản</button>
+        </div>
+      </form></details>` : people.length ? `<details open><summary>Chỉnh sửa và duyệt tài khoản</summary>
       <form id="admin-profile">
         <div class="account-grid">
           <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${accounts}</select></label>
@@ -59,7 +78,7 @@ export function renderUsers(state) {
         </div>
         <label id="disable-confirm" hidden><input type="checkbox" name="confirmDisable"> Xác nhận khóa quyền truy cập của tài khoản này</label>
       </form>
-    </details>` : '<p>Chưa có người dùng thường để duyệt. Thêm người dùng bên dưới hoặc để cán bộ tự đăng ký bằng email BIDV.</p>'}
+    </details>` : '<p>Chưa có tài khoản người dùng. Cán bộ có thể tự đăng ký bằng email BIDV.</p>'}
     <details${people.length ? '' : ' open'}><summary>Thêm người dùng</summary>
       ${updated ? `<p>Cán bộ nhận liên kết kích hoạt và tự đặt mật khẩu qua email BIDV.</p>
         ${renderActivationForm('user-invitation')}
@@ -77,16 +96,99 @@ export function renderUsers(state) {
       <form id="admin-member">
         <div class="account-grid">
           <label>Dự án<select name="project" required><option value="">Chọn dự án</option>${projectOptions(state.projects)}</select></label>
-          <label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${assignable}</select></label>
+          ${managed ? '' : `<label>Tài khoản<select name="user" required><option value="">Chọn tài khoản</option>${assignable}</select></label>`}
           <label>Thao tác<select name="active"><option value="true">Thêm vào dự án</option><option value="false">Gỡ khỏi dự án</option></select></label>
         </div>
+        ${managed ? renderMemberPicker() : ''}
         <button class="primary">Lưu phân công</button>
       </form>
     </details>
   </section>`;
 }
 
+function bindAccountEditor(root,state,{ action,api,refresh,alive,notice }) {
+  const form = root.querySelector('#admin-account');
+  if (!form) return;
+  const unit = form.querySelector('#admin-organization-unit');
+  const reset = form.querySelector('#admin-send-reset');
+  const lock = form.querySelector('#admin-lock-account');
+  let selected;
+  let unitPicker;
+  form.elements.user.onchange = () => {
+    selected = state.profiles.find(item => item.id === form.elements.user.value && !item.deleted_at);
+    form.elements.fullName.value = selected?.full_name ?? '';
+    form.elements.code.value = selected?.employee_code || selected?.requested_employee_code || '';
+    form.elements.email.value = selected?.email ?? '';
+    for (const button of form.querySelectorAll('button')) button.disabled = !selected;
+    reset.disabled = !selected || selected.status === 'disabled';
+    lock.disabled = !selected || selected.status === 'pending';
+    lock.textContent = selected?.status === 'disabled' ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản';
+    unit.replaceChildren();
+    if (selected) {
+      unit.innerHTML = renderUnitPicker({id:'account-organization-unit',scope:'admin-units',label:'Đơn vị (Ban/TT)',
+        selected:selected.organization_unit ?? '',history:state.profiles.map(item => item.organization_unit)});
+      unitPicker = bindUnitPicker(unit.querySelector('select'),{scope:'admin-units'});
+    }
+  };
+  const update = (operation, message) => {
+    const user = selected?.id;
+    if (!user) return;
+    const changes = operation === 'edit' ? { p_name:form.elements.fullName.value.trim(),
+      p_code:normalizeEmployeeCode(form.elements.code.value), p_unit:unitPicker.finish() } : { p_name:null,p_code:null,p_unit:null };
+    return api.rpc('ot_admin_account',{p_user:user,p_action:operation,...changes}).then(async () => {
+      await refresh();
+      if (alive()) notice(message);
+    });
+  };
+  form.onsubmit = event => { event.preventDefault(); void action(() => update('edit','Đã lưu hồ sơ tài khoản.')); };
+  reset.onclick = () => {
+    if (!selected || !window.confirm('Gửi mã đặt lại mật khẩu tới ' + selected.email + '?')) return;
+    const email = selected.email;
+    void action(async () => {
+      await api.sendPasswordReset(email);
+      if (alive()) notice('Đã yêu cầu gửi mã đặt lại mật khẩu đến email BIDV.');
+    });
+  };
+  lock.onclick = () => {
+    if (!selected) return;
+    const unlocking = selected.status === 'disabled';
+    if (!window.confirm((unlocking ? 'Mở khóa ' : 'Tạm khóa ') + selected.full_name + '?')) return;
+    void action(() => update(unlocking ? 'unlock' : 'lock',unlocking ? 'Đã mở khóa tài khoản.' : 'Đã tạm khóa tài khoản.'));
+  };
+  form.querySelector('#admin-delete-account').onclick = () => {
+    if (selected && window.confirm('Xóa tài khoản ' + selected.full_name + ' và thu hồi quyền dự án? Lịch sử OT sẽ được giữ.')) {
+      void action(() => update('delete','Đã xóa tài khoản và thu hồi quyền dự án.'));
+    }
+  };
+}
+
+function bindBulkAssignment(form,state,{ action,api,refresh,alive,notice }) {
+  const project = form.elements.project;
+  const active = form.elements.active;
+  let picker;
+  function renderPicker() {
+    const members = new Set(state.memberships.filter(item => item.project_id === project.value && item.active).map(item => item.user_id));
+    const add = active.value === 'true';
+    const people = project.value ? state.profiles.filter(item => item.status === 'active' && item.employee_code &&
+      !item.deleted_at && members.has(item.id) !== add).map(item => ({...item,user_id:item.id})) : [];
+    picker = bindMemberPicker(form,people);
+  }
+  project.onchange = active.onchange = renderPicker;
+  renderPicker();
+  form.onsubmit = event => {
+    event.preventDefault();
+    const users = picker.values();
+    if (!users.length) return notice('Chọn ít nhất một cán bộ.',true);
+    void action(async () => {
+      await api.rpc('ot_set_members',{p_project:project.value,p_users:users,p_active:active.value === 'true'});
+      await refresh();
+      if (alive()) notice('Đã cập nhật phân công cho ' + users.length + ' cán bộ.');
+    });
+  };
+}
+
 export function bindUsers(root, state, { submit, action, api, refresh, alive, notice }) {
+  bindAccountEditor(root,state,{action,api,refresh,alive,notice});
   const form = root.querySelector('#admin-profile');
   const updated = state.invitations !== null;
   if (form) {
@@ -134,7 +236,8 @@ export function bindUsers(root, state, { submit, action, api, refresh, alive, no
       p_email: normalizeEmail(fields.email), p_full_name: null, p_employee_code: null, p_active: false
     }), 'Đã hủy kích hoạt tài khoản.');
   }
-  submit('#admin-member', 'ot_set_member', fields => ({
+  if (state.approvalAccess) bindBulkAssignment(root.querySelector('#admin-member'),state,{action,api,refresh,alive,notice});
+  else submit('#admin-member', 'ot_set_member', fields => ({
     p_user: fields.user, p_project: fields.project, p_active: fields.active === 'true'
   }), 'Đã lưu phân công.');
 }
@@ -158,8 +261,10 @@ export function bindProjectMembers(root, state, { action, api, alive, notice, ex
     state.teamProject = project;
     roster.textContent = 'Đang tải thành viên…';
     let rows;
+    let candidates;
     try {
-      rows = await api.rpc('ot_list_project_members', { p_project: project });
+      [rows,candidates] = await Promise.all([api.rpc('ot_list_project_members', { p_project: project }),
+        state.approvalAccess ? api.rpc('ot_project_candidates',{p_project:project}) : null]);
     } catch (error) {
       if (!alive() || !roster.isConnected || requested !== version) return;
       if (error.status === 401) expire(error);
@@ -171,7 +276,7 @@ export function bindProjectMembers(root, state, { action, api, alive, notice, ex
     roster.innerHTML = `${table(['Mã cán bộ', 'Họ tên', 'Trạng thái'],
       rows.map(item => [item.employee_code, item.full_name, labels[item.status]]))}
       <form id="team-add" class="month-actions">
-        <label>Mã cán bộ đã kích hoạt<input name="code" required maxlength="8" inputmode="numeric" pattern="[0-9]{1,8}"></label>
+        ${candidates ? renderMemberPicker() : '<label>Mã cán bộ đã kích hoạt<input name="code" required maxlength="8" inputmode="numeric" pattern="[0-9]{1,8}"></label>'}
         <button class="primary">Thêm vào dự án</button>
       </form>
       <details>
@@ -185,11 +290,16 @@ export function bindProjectMembers(root, state, { action, api, alive, notice, ex
         <button>Gỡ khỏi dự án</button>
       </form>` : ''}`;
     bindActivationForm(roster.querySelector('#team-activation'), project, { action, api, alive, notice });
-    roster.querySelector('#team-add').onsubmit = event => {
+    const addForm = roster.querySelector('#team-add');
+    const memberPicker = candidates ? bindMemberPicker(addForm,candidates.filter(item => !item.assigned)) : null;
+    addForm.onsubmit = event => {
       event.preventDefault();
-      const code = new FormData(event.currentTarget).get('code');
+      const users = memberPicker?.values();
+      if (memberPicker && !users.length) return notice('Chọn ít nhất một cán bộ.',true);
+      const code = new FormData(addForm).get('code');
       action(async () => {
-        await api.rpc('ot_set_member_by_code', { p_project: project, p_employee_code: normalizeEmployeeCode(code), p_active: true });
+        if (memberPicker) await api.rpc('ot_set_members',{p_project:project,p_users:users,p_active:true});
+        else await api.rpc('ot_set_member_by_code', { p_project: project, p_employee_code: normalizeEmployeeCode(code), p_active: true });
         if (!alive()) return;
         await load();
         if (alive()) notice('Đã thêm thành viên vào dự án.');

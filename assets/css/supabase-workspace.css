@@ -204,3 +204,18 @@ body {
   .account-main .workspace-panes button { flex: 1 1 auto; }
   #refresh-ot { margin-left: 0; }
 }
+
+.approval-group-layout { display:grid; grid-template-columns:minmax(12rem,.55fr) minmax(0,1.45fr); align-items:start; gap:.85rem 1.4rem; margin-top:.8rem; }
+.account-main button.approval-group-choice { display:block; width:100%; text-align:left; margin-bottom:.45rem; }
+.member-picker-options { max-height:15rem; overflow:auto; }
+.member-picker-options label { padding:.4rem; background:#f5f8f3; margin-bottom:.25rem; }
+.member-picker-selection { margin-top:.6rem; }
+.approval-review-actions { margin-top:.8rem; align-items:center; }
+#approval-selection { margin-right:auto; color:#456256; }
+.approval-logged { display:block; background:#dbece1; color:#164833; padding:.2rem .25rem; border-radius:.3rem; font-weight:750; }
+#approval-requests .table-wrap { margin-top:.65rem; }
+#approval-requests dialog { width:min(33rem,calc(100% - 2rem)); border:1px solid var(--ot-line); border-radius:.9rem; padding:1.25rem; color:var(--ot-ink); }
+#approval-requests dialog::backdrop { background:#132c225f; }
+#approval-requests dialog :is(h2,p) { margin-bottom:.75rem; }
+#approval-requests dialog .account-actions { margin-bottom:0; }
+@media (max-width: 40rem) { .approval-group-layout { grid-template-columns:1fr; } }
