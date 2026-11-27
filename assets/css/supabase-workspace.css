@@ -71,3 +71,135 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .manual-unit { max-width: 28rem; }
 .manual-review { border-top: 1px solid #dce7e1; margin-top: 1rem; padding-top: .85rem; }
 .manual-review label { margin-top: .7rem; }
+
+/* OT Workspace */
+body {
+  --ot-paper: #f7f6f1;
+  --ot-ink: #18372e;
+  --ot-green: #1a5846;
+  --ot-line: #dde5dd;
+  --ot-gold: #e1c794;
+  --ot-shadow: 0 12px 38px #17382a0a;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ot-paper);
+  color: var(--ot-ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.account-header {
+  display: block;
+  padding: 0;
+  border-bottom: 3px solid #c9a669;
+  background: radial-gradient(ellipse at 80% 0, #276251 0%, transparent 56%), #10372e;
+}
+.account-header-inner {
+  width: min(105rem, calc(100% - 2.5rem));
+  min-height: clamp(6rem, 10vw, 8rem);
+  margin: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .9rem;
+}
+.account-brand { display: flex; align-items: center; gap: clamp(.65rem, 2vw, 1.25rem); }
+.account-mark {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: clamp(3rem, 6vw, 4.5rem);
+  aspect-ratio: 1;
+  border: 1px solid #ba9a60;
+  border-radius: 26%;
+  background: linear-gradient(145deg, #ffffff15, #ffffff04);
+  color: var(--ot-gold);
+  font: 700 clamp(1.2rem, 2.8vw, 2rem)/1 Georgia, serif;
+  letter-spacing: -.075em;
+}
+.account-mark::after {
+  position: absolute;
+  inset: .31rem;
+  border: 1px solid #e1c79463;
+  border-radius: 23%;
+  content: "";
+}
+.account-brand strong {
+  color: #fffaf0;
+  font: 400 clamp(1.55rem, 4.3vw, 3.45rem)/1.03 Georgia, serif;
+  letter-spacing: -.045em;
+}
+.account-header button { flex: none; border-color: #ffffff47; background: #ffffff10; color: white; }
+.account-header button:hover { background: #ffffff25; }
+.account-main { flex: 1; width: min(76rem, calc(100% - 2.5rem)); margin: clamp(1.25rem, 3vw, 2.5rem) auto; }
+.account-main:has(#ot-workspace:not([hidden])) { width: min(105rem, calc(100% - 2.5rem)); }
+.account-footer { padding: 1.25rem; border-top: 1px solid var(--ot-line); text-align: center; color: #526a5e; font-size: .85rem; }
+.account-card {
+  background: #fff;
+  padding: clamp(1.1rem, 2.3vw, 1.85rem);
+  border-color: var(--ot-line);
+  border-radius: 1rem;
+  box-shadow: var(--ot-shadow);
+}
+.account-card h1, .account-card h2 { font-size: clamp(1.25rem, 2vw, 1.65rem); letter-spacing: -.028em; line-height: 1.22; margin-bottom: .95rem; }
+.account-card h3 { font-size: 1rem; }
+#profile { border-inline-start: 3px solid #b58d4f; background: linear-gradient(120deg, #fff, #fcfaf4); }
+.account-main button { font-weight: 600; color: var(--ot-ink); border-color: #ccd9d0; border-radius: .65rem; }
+.account-main button:not(:disabled):hover { border-color: #91ac9e; background: #edf4ef; }
+.account-main button.primary,
+.account-main button[aria-current="true"],
+.account-main .workspace-panes button[aria-current="page"] { background: var(--ot-green); border-color: var(--ot-green); color: #fff; }
+.account-main button:is(.primary, [aria-current="true"], [aria-current="page"]):not(:disabled):hover { background: #153f33; color: #fff; }
+:is(.account-main, .account-header) :is(button, input, a, select, summary):focus-visible { outline: 2px solid #227658; }
+.account-header button:focus-visible { outline-color: var(--ot-gold); }
+.account-card :is(input:not([type="checkbox"]), select, textarea) {
+  min-height: 2.65rem;
+  border-color: #c6d4ca;
+  border-radius: .55rem;
+  padding: .51rem .65rem;
+}
+.account-card input[type="checkbox"] { width: 1.1rem; height: 1.1rem; flex: none; margin: 0; accent-color: var(--ot-green); }
+.account-grid { gap: .65rem 1rem; }
+#ot-workspace > nav[aria-label="Vai trò làm việc"], .account-nav {
+  border: 1px solid #dbe5dd;
+  border-radius: .85rem;
+  background: #eef3ed;
+  padding: .45rem;
+}
+#auth .account-nav button { flex: 1 1 8rem; }
+.legacy-link { color: #215c48; text-decoration: underline; text-underline-offset: .2em; }
+.workspace-panes { gap: .4rem; border-color: #d6dfd6; margin: .85rem 0 1.2rem; }
+.account-main .workspace-panes button { border-color: transparent; }
+.account-main :is(.table-wrap, .month-scroll) { border: 1px solid var(--ot-line); border-radius: .65rem; }
+.account-main th { background: #f0f5f0; color: #38564a; font-size: .82rem; font-weight: 700; }
+.account-main td { font-size: .88rem; }
+.account-main :is(th, td) { padding: .68rem; }
+.account-main .month-sheet :is(th, td) { padding: .36rem .2rem; }
+.account-main .month-sheet :is(input, select) {
+  min-height: 2.15rem;
+  padding: .28rem .1rem;
+  border-radius: .4rem;
+  font-size: .9rem;
+}
+
+.account-main .month-sheet th:first-child { background: #e4eee6; border-right-color: #c9d8cd; box-shadow: 2px 0 3px #203d2820; }
+.month-sheet [data-day-type="NT"], .month-legend [data-day-type="NT"] { background: #f5faf5; }
+[data-day-type="NN"] { background: #eaf1f8; }
+[data-day-type="L"] { background: #fff2d6; }
+.month-actions output { padding: .42rem .8rem; border-radius: .55rem; background: #e7f1e9; color: #184c38; }
+.manual-review { border-color: var(--ot-line); margin-top: 1.25rem; padding-top: 1.1rem; }
+.account-main summary { color: var(--ot-green); }
+.account-main details { overflow-wrap: anywhere; }
+.account-main details[open] > summary { margin-bottom: .65rem; }
+.calendar-year section { border-color: var(--ot-line); border-radius: .65rem; }
+#pane-backup p { margin-bottom: .85rem; }
+
+@media (max-width: 38rem) {
+  .account-header-inner,
+  .account-main,
+  .account-main:has(#ot-workspace:not([hidden])) { width: calc(100% - 1.5rem); }
+  .workspace-panes { margin-bottom: .85rem; }
+  .account-main .workspace-panes button { flex: 1 1 auto; }
+  #refresh-ot { margin-left: 0; }
+}

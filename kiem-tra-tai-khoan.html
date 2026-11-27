@@ -4,15 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://zlvukgylpcuwpvmkuxgm.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <meta name="theme-color" content="#123f35">
+  <meta name="theme-color" content="#10372e">
   <title>Tài khoản · OT Workspace</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./assets/css/style.css">
-  <link rel="stylesheet" href="./assets/css/supabase-workspace.css?v=9">
+  <link rel="stylesheet" href="./assets/css/supabase-workspace.css?v=10">
   <script type="module" src="./assets/js/supabase-auth-check.js?v=11"></script>
 </head>
 <body>
-  <header class="account-header"><strong>OT Workspace</strong><button id="logout" type="button" hidden>Đăng xuất</button></header>
+  <header class="account-header">
+    <div class="account-header-inner">
+      <div class="account-brand">
+        <span class="account-mark" aria-hidden="true">OT</span>
+        <strong>OT Workspace</strong>
+      </div>
+      <button id="logout" type="button" hidden>Đăng xuất</button>
+    </div>
+  </header>
   <main class="account-main">
     <p id="status" role="status" aria-live="polite" hidden></p>
     <p id="error" role="alert" hidden></p>
@@ -50,5 +58,6 @@
     <section id="profile" class="account-card" aria-label="Hồ sơ" hidden></section>
     <div id="ot-workspace" hidden></div>
   </main>
+  <footer class="account-footer">made by Longbq</footer>
 </body>
 </html>
