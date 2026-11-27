@@ -1,4 +1,4 @@
-import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=10';
+import { normalizeEmail, normalizeEmployeeCode } from './client.mjs?v=11';
 import { esc, option, projectOptions, table } from './ui.mjs';
 
 const labels = { pending: 'Chờ duyệt', active: 'Hoạt động', disabled: 'Đã khóa' };
@@ -31,7 +31,7 @@ export function renderUsers(state) {
       </form>
     </details>` : '<p>Chưa có người dùng thường để duyệt. Thêm người dùng bên dưới hoặc để cán bộ tự đăng ký bằng email BIDV.</p>'}
     <details${people.length ? '' : ' open'}><summary>Thêm người dùng</summary>
-      ${updated ? `<p>Thêm hồ sơ đăng ký trước. Cán bộ tự đăng ký hoặc đăng nhập trên web OT và xác minh email BIDV để nhận tài khoản.</p>
+      ${updated ? `<p>Gửi thư mời để tạo tài khoản và cho cán bộ tự đặt mật khẩu. Bạn cũng có thể lưu đăng ký trước để cán bộ tự đăng ký bằng email BIDV.</p>
         ${table(['Email đăng ký trước', 'Họ tên', 'Mã cán bộ'], state.invitations.map(item => [item.email, item.full_name, item.employee_code]))}
         <form id="user-invitation">
           <div class="account-grid">
@@ -39,14 +39,17 @@ export function renderUsers(state) {
             <label>Họ tên<input name="fullName" maxlength="200" required></label>
             <label>Mã cán bộ<input name="code" inputmode="numeric" maxlength="8" pattern="[0-9]{1,8}" required></label>
           </div>
-          <button class="primary">Lưu đăng ký trước</button>
+          <div class="account-actions">
+            <button class="primary">Lưu đăng ký trước</button>
+            <button type="button" id="invite-user">Tạo tài khoản và gửi thư mời</button>
+          </div>
         </form>
         ${state.invitations.length ? `<form id="cancel-invitation" class="month-actions">
           <label>Đăng ký trước cần hủy<select name="email" required>
             <option value="">Chọn email</option>${state.invitations.map(item => option(item.email, item.email)).join('')}
           </select></label>
           <button>Hủy đăng ký trước</button>
-        </form>` : ''}` : '<p>Áp dụng migration quản lý người dùng để thêm hồ sơ đăng ký trước.</p>'}
+        </form>` : ''}` : '<p>Chạy tệp 202611260004_user_management.sql trong Supabase SQL Editor, rồi bấm Tải lại dữ liệu.</p>'}
     </details>
     <details><summary>Phân công dự án</summary>
       ${table(['Dự án', 'Cán bộ', 'Phân công'], state.memberships.map(member => [
@@ -110,6 +113,22 @@ export function bindUsers(root, state, { submit, action, api, refresh, alive, no
       p_email: normalizeEmail(fields.email), p_full_name: fields.fullName.trim(),
       p_employee_code: normalizeEmployeeCode(fields.code), p_active: true
     }), 'Đã lưu hồ sơ đăng ký trước.');
+    const invitation = root.querySelector('#user-invitation');
+    invitation.querySelector('#invite-user').onclick = () => {
+      if (!invitation.reportValidity()) return;
+      const fields = new FormData(invitation);
+      action(async () => {
+        const fullName = fields.get('fullName').trim();
+        if (!fullName) throw Error('Vui lòng nhập họ tên đầy đủ.');
+        await api.inviteUser({
+          email: normalizeEmail(fields.get('email')), fullName,
+          employeeCode: normalizeEmployeeCode(fields.get('code'))
+        });
+        if (!alive()) return;
+        await refresh();
+        if (alive()) notice('Đã gửi thư mời. Cán bộ dùng mã trong email BIDV để đặt mật khẩu.');
+      });
+    };
     if (state.invitations.length) submit('#cancel-invitation', 'ot_save_user_invitation', fields => ({
       p_email: normalizeEmail(fields.email), p_full_name: null, p_employee_code: null, p_active: false
     }), 'Đã hủy hồ sơ đăng ký trước.');
@@ -144,7 +163,7 @@ export function bindProjectMembers(root, state, { action, api, alive, notice, ex
       if (!alive() || !roster.isConnected || requested !== version) return;
       if (error.status === 401) expire(error);
       else roster.textContent = error.code === 'PGRST202'
-        ? 'Cần áp dụng migration quản lý người dùng trong Supabase.' : error.message;
+        ? 'Chạy tệp 202611260004_user_management.sql trong Supabase SQL Editor, rồi bấm Tải lại dữ liệu.' : error.message;
       return;
     }
     if (!alive() || !roster.isConnected || requested !== version) return;

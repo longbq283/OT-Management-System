@@ -44,6 +44,12 @@ const errorMessages = {
   OT_LIMITS_INVALID: 'Giới hạn OT cần từ 0 đến 24 giờ cho từng ngày.',
   OT_DAILY_REQUIRED: 'Kỳ này yêu cầu số giờ chi tiết theo từng ngày.',
   OT_PROFILE_EXISTS: 'Tài khoản đã tồn tại. Chọn tài khoản trong phần chỉnh sửa.',
+  OT_INVITE_AUTH: 'Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.',
+  OT_INVITE_CONFIG: 'Thiếu cấu hình Supabase cho chức năng gửi lời mời.',
+  OT_USER_MIGRATION: 'Cần chạy migration quản lý người dùng 202611260004 trong Supabase.',
+  OT_INVITE_EXISTING: 'Email đã có tài khoản. Hãy dùng mật khẩu hiện có hoặc đặt lại mật khẩu. Hồ sơ đăng ký trước đã được lưu nếu tài khoản đang chờ duyệt.',
+  OT_INVITE_RATE: 'Đã đạt giới hạn gửi email. Hồ sơ đăng ký trước đã được lưu, hãy thử gửi lại sau.',
+  OT_INVITE_EMAIL: 'Chưa gửi được thư mời. Hồ sơ đăng ký trước đã được lưu. Kiểm tra SMTP và Auth Logs rồi thử lại.',
   OT_CODE_HAS_HISTORY: 'Mã cán bộ đã có lịch sử OT. Bạn vẫn có thể sửa họ tên hoặc trạng thái.',
   OT_MEMBER_MISSING: 'Tài khoản không còn là thành viên của dự án này.',
   OT_CONFIRM: 'Tài khoản phải xác nhận email trước khi được duyệt.'
@@ -154,7 +160,28 @@ export function createSupabaseClient(fetcher = globalThis.fetch.bind(globalThis)
     },
     async verify(email, token) { await auth('verify', { email, token, type: 'signup' }, { signIn: true }); },
     async resend(email) { await auth('resend', { email, type: 'signup' }); },
+    async sendPasswordReset(email) { await auth('recover', { email }); },
+    async verifyPasswordCode(email, token, type) {
+      const result = await auth('verify', { email, token, type });
+      if (!result?.access_token) throw Error('Supabase chưa cấp phiên đặt mật khẩu.');
+      return result.access_token;
+    },
+    async setPassword(token, password) {
+      await request('/auth/v1/user', { method: 'PUT', token, body: { password } });
+    },
     async signIn(email, password) { await auth('token?grant_type=password', { email, password }, { signIn: true }); },
+    async inviteUser({ email, fullName, employeeCode }) {
+      const current = currentSession();
+      try {
+        await request('/functions/v1/ot-invite-user', {
+          method: 'POST', token: current.token, body: { email, fullName, employeeCode }
+        });
+      } catch (error) {
+        if (error.status === 404) throw Error('Cần triển khai Edge Function ot-invite-user để gửi thư mời trực tiếp.');
+        throw error;
+      }
+      if (current !== session) throw Error('Tài khoản đã thay đổi.');
+    },
     async signOut() {
       const token = session?.token;
       remember(null);

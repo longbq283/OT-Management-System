@@ -1,5 +1,5 @@
-import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=10';
-import { mountWorkspace } from '../../src/supabase/workspace.js?v=11';
+import { createSupabaseClient, normalizeEmail } from '../../src/supabase/client.mjs?v=11';
+import { mountWorkspace } from '../../src/supabase/workspace.js?v=12';
 
 const api = createSupabaseClient();
 const auth = document.querySelector('#auth');
@@ -10,10 +10,12 @@ const authForms = [...auth.querySelectorAll('form')];
 const register = document.querySelector('#register');
 const signupFields = document.querySelector('#signup-fields');
 const signupOtp = document.querySelector('#signup-otp');
+const passwordForm = document.querySelector('#set-password');
 const statuses = { pending: 'Chờ quản trị viên duyệt', active: 'Đang hoạt động', disabled: 'Đã vô hiệu hóa' };
 let closeWorkspace;
 let busy = false;
 let expiryTimer;
+let passwordSession;
 
 function notice(message = '', isError = false) {
   for (const id of ['status', 'error']) {
@@ -38,6 +40,8 @@ function setOtpStep(active) {
 
 function showForm(id, email) {
   setOtpStep(false);
+  passwordSession = undefined;
+  passwordForm.elements.otp.required = true;
   for (const form of authForms) {
     form.reset();
     form.hidden = form.id !== id;
@@ -161,7 +165,26 @@ for (const form of authForms) {
     if (form.elements.otp) form.elements.otp.value = '';
     run(async () => {
       const email = normalizeEmail(fields.email);
-      if (form === register && !signupOtp.hidden) {
+      if (form === passwordForm) {
+        if (passwordSession?.email !== email || passwordSession?.mode !== fields.mode) {
+          if (!fields.otp) throw Error('Vui lòng nhập mã OTP đã nhận.');
+          const token = await api.verifyPasswordCode(email, fields.otp, fields.mode);
+          passwordSession = { email, mode: fields.mode, token };
+          passwordForm.elements.otp.required = false;
+        }
+        try {
+          await api.setPassword(passwordSession.token, fields.password);
+        } catch (error) {
+          if (error.status === 401) {
+            passwordSession = undefined;
+            passwordForm.elements.otp.required = true;
+            throw Error('Phiên đặt mật khẩu đã hết hạn. Hãy gửi mã đặt lại mật khẩu mới.');
+          }
+          throw error;
+        }
+        showForm('login', email);
+        notice('Đã lưu mật khẩu. Hãy đăng nhập bằng mật khẩu mới.');
+      } else if (form === register && !signupOtp.hidden) {
         await api.verify(email, fields.otp);
         await showProfile();
       } else if (form === register) {
@@ -200,6 +223,20 @@ document.querySelector('#resend').addEventListener('click', () => run(async () =
   await api.resend(email);
   notice('Đã yêu cầu gửi lại mã OTP đăng ký.');
 }));
+
+document.querySelector('#send-password-reset').addEventListener('click', () => {
+  if (!passwordForm.elements.email.reportValidity()) return;
+  run(async () => {
+    const email = normalizeEmail(passwordForm.elements.email.value);
+    await api.sendPasswordReset(email);
+    passwordSession = undefined;
+    passwordForm.elements.mode.value = 'recovery';
+    passwordForm.elements.otp.required = true;
+    passwordForm.elements.otp.value = '';
+    passwordForm.elements.otp.focus();
+    notice('Nếu tài khoản đủ điều kiện, Supabase sẽ gửi mã đặt lại mật khẩu đến email BIDV.');
+  });
+});
 
 logout.addEventListener('click', () => run(async () => {
   const ending = api.signOut();

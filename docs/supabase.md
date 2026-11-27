@@ -33,9 +33,17 @@ Dùng thông báo lỗi gốc hoặc mã yêu cầu đã che thông tin riêng t
 
 ## Quản lý người dùng
 
-- **Quản trị hệ thống → Quản lý → Quản lý người dùng** hiển thị hồ sơ và trạng thái. Chọn **Thêm người dùng** để lưu email BIDV, tên và mã cán bộ trước. Người dùng tự đăng ký và xác minh OTP trên website, rồi hồ sơ đăng ký trước được kích hoạt ở lần đăng nhập hoặc tải lại hồ sơ. Người tự đăng ký ngoài danh sách vẫn chờ duyệt.
+- **Quản trị hệ thống → Quản lý → Quản lý người dùng → Thêm người dùng** nhận email BIDV, họ tên và mã cán bộ. Chọn **Tạo tài khoản và gửi thư mời** để Supabase tạo tài khoản và gửi mã đặt mật khẩu. Chọn **Lưu đăng ký trước** nếu cán bộ sẽ tự đăng ký và xác minh OTP trên website. Cả hai cách kích hoạt hồ sơ khi cán bộ đăng nhập sau xác minh email. Người tự đăng ký ngoài danh sách vẫn chờ duyệt.
 - Dùng **Chỉnh sửa và duyệt tài khoản** để sửa họ tên, duyệt hoặc khóa quyền truy cập. Mã cán bộ có thể sửa trước khi có lịch sử OT. Khóa tài khoản lưu lại lịch sử và có thể kích hoạt lại. **Phân công dự án** thêm hoặc gỡ thành viên, còn **Phân quyền quản trị dự án** cấp hoặc thu hồi quyền quản trị.
 - **Quản trị dự án → Thành viên dự án** liệt kê thành viên trong dự án được quản lý. Thêm theo mã cán bộ đã kích hoạt hoặc chọn một thành viên để gỡ khỏi dự án. Việc gỡ thành viên giữ lại các bản ghi OT đã lưu.
+
+### Bật biểu mẫu trên Supabase
+
+1. Mở **SQL Editor → New query** trên project đang phục vụ OT Workspace. Kiểm tra migration quản trị dự án bằng `select to_regprocedure('ot_private.require_project_admin(uuid)');`. Nếu kết quả rỗng, đối chiếu schema theo mục **Triển khai database**.
+2. Kiểm tra bảng đăng ký trước bằng `select to_regclass('public.ot_user_invitations');`. Nếu kết quả rỗng, sao chép toàn bộ [202611260004_user_management.sql](../supabase/migrations/202611260004_user_management.sql) vào query mới và bấm **Run**. Sau khi chạy thành công, kết quả phải là `ot_user_invitations`. Kiểm tra thêm `select to_regprocedure('public.ot_list_project_members(uuid)'), to_regprocedure('public.ot_set_member_by_code(uuid,text,boolean)');`. Tải lại dữ liệu trên website.
+3. Để bật gửi thư mời trực tiếp, mở **Edge Functions → Deploy a new function → Via Editor**. Đặt tên `ot-invite-user`, thay nội dung `index.ts` bằng [mã Edge Function](../supabase/functions/ot-invite-user/index.ts), rồi triển khai. Trong **Details**, tắt **Verify JWT with legacy secret** nếu đang bật. Function tự xác thực phiên với Supabase Auth và database kiểm tra quyền quản trị hệ thống trước khi gọi Auth Admin API. CLI tương đương là `supabase functions deploy ot-invite-user --project-ref zlvukgylpcuwpvmkuxgm --no-verify-jwt`. Nền tảng cấp các biến `SUPABASE_URL`, `SUPABASE_ANON_KEY` và `SUPABASE_SERVICE_ROLE_KEY` cho function.
+4. Trong **Authentication → Email Templates**, đặt `{{ .Token }}` trong nội dung hai mẫu **Invite user** và **Reset password**. Ví dụ “Mã đặt mật khẩu của bạn trên OT Workspace là {{ .Token }}.” Giữ mẫu **Confirm signup** cho luồng đăng ký hiện có. Mở URL website được in trong email, chọn **Thư mời / Quên mật khẩu**, chọn loại mã, nhập email và mã rồi đặt mật khẩu. Đăng nhập bằng mật khẩu mới để nhận hồ sơ đã chuẩn bị. Nếu gửi thư báo lỗi, kiểm tra **Logs → Auth** cùng thời điểm và cấu hình SMTP. Hồ sơ đăng ký trước đã lưu có thể dùng để thử gửi lại hoặc để cán bộ tự đăng ký.
+5. Sau khi tài khoản hiển thị **Hoạt động**, quản trị hệ thống dùng **Phân công dự án**, hoặc quản trị dự án dùng **Thành viên dự án → Thêm vào dự án**. Mỗi dự án cần được phân công riêng. Quyền quản trị dự án được cấp ở **Phân quyền quản trị dự án**.
 
 ## Chọn vai trò và lịch làm việc
 

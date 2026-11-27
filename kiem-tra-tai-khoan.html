@@ -9,7 +9,7 @@
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./assets/css/style.css">
   <link rel="stylesheet" href="./assets/css/supabase-workspace.css?v=10">
-  <script type="module" src="./assets/js/supabase-auth-check.js?v=11"></script>
+  <script type="module" src="./assets/js/supabase-auth-check.js?v=12"></script>
 </head>
 <body>
   <header class="account-header">
@@ -28,6 +28,7 @@
       <nav class="account-nav" aria-label="Thao tác tài khoản">
         <button type="button" data-auth="login">Đăng nhập</button>
         <button type="button" data-auth="register">Đăng ký</button>
+        <button type="button" data-auth="set-password">Thư mời / Quên mật khẩu</button>
       </nav>
       <form id="login" class="account-card">
         <h1>Đăng nhập</h1>
@@ -51,6 +52,22 @@
           <button id="open-otp" type="button" aria-controls="signup-otp">Đã đăng ký? Nhập mã OTP</button>
           <button id="resend" type="button" hidden>Gửi lại mã OTP</button>
           <button id="edit-signup" type="button" hidden>Sửa thông tin đăng ký</button>
+        </div>
+      </form>
+      <form id="set-password" class="account-card" hidden>
+        <h1>Đặt mật khẩu</h1>
+        <label>Email BIDV<input name="email" type="email" autocomplete="email" required></label>
+        <label>Loại mã
+          <select name="mode">
+            <option value="invite">Mã trong thư mời</option>
+            <option value="recovery">Mã đặt lại mật khẩu</option>
+          </select>
+        </label>
+        <label>Mã OTP<input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" required></label>
+        <label>Mật khẩu mới<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <div class="account-actions">
+          <button class="primary">Lưu mật khẩu</button>
+          <button type="button" id="send-password-reset">Gửi mã đặt lại mật khẩu</button>
         </div>
       </form>
       <a class="legacy-link" href="./?legacy=1#/backup">Mở bản cục bộ để sao lưu dữ liệu cũ</a>

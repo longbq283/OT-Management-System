@@ -24,6 +24,7 @@ const memberships = [{ project_id: 'pr-b', user_id: account.id, active: true },
   { project_id: 'pr-b', user_id: admin.id, active: true }];
 const calendars = [{ project_id: 'pr-b', year: 2026, month: 11, days: Array(30).fill('NT'), limit_minutes: [720, 780, ...Array(28).fill(120)] }];
 const calls = [];
+const passwordSetupToken = 'fixture-password-setup';
 let networkError = false;
 let duplicate = false;
 let signupFailure;
@@ -40,6 +41,20 @@ async function routeRequest(route) {
     headers: { 'access-control-allow-origin': '*', 'access-control-expose-headers': 'sb-request-id',
       'sb-request-id': 'fixture-request-id' } });
   const session = user => ({ access_token: 'fixture-session-' + user.id, expires_in: 3600, user: { id: user.id } });
+  if (endpoint.endsWith('/ot-invite-user')) {
+    assert.equal(actor, admin);
+    invitations.push({ email: fields.email, full_name: fields.fullName, employee_code: fields.employeeCode });
+    return send({ invited: true });
+  }
+  if (endpoint.endsWith('/recover')) return send({});
+  if (endpoint.endsWith('/verify') && ['invite', 'recovery'].includes(fields.type)) {
+    return fields.token === '234567' ? send({ access_token: passwordSetupToken }) : send({ error_code: 'otp_expired' }, 403);
+  }
+  if (endpoint.endsWith('/auth/v1/user') && req.method() === 'PUT') {
+    assert.equal(token, passwordSetupToken);
+    assert.equal(fields.password, 'Fixture-new-password');
+    return send({});
+  }
   if (endpoint.endsWith('/signup')) {
     if (networkError) return route.abort();
     if (signupFailure) return send(signupFailure, 500);
@@ -547,6 +562,30 @@ async function run() {
     await page.reload();
     await page.getByRole('heading', { name: 'Đăng nhập', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => sessionStorage.getItem('ot-workspace:session')), null);
+    await operator.locator('#user-invitation [name=email]').fill('fixture-send@bidv.com.vn');
+    await operator.locator('#user-invitation [name=fullName]').fill('Thư mời giả lập');
+    await operator.locator('#user-invitation [name=code]').fill('457');
+    await operator.getByRole('button', { name: 'Tạo tài khoản và gửi thư mời' }).click();
+    await sleepUntilMessage(operator, 'Đã gửi thư mời.');
+    assert.ok(calls.some(call => call.endpoint.endsWith('/ot-invite-user') && call.fields.employeeCode === '00000457'));
+    await page.getByRole('button', { name: 'Thư mời / Quên mật khẩu' }).click();
+    const password = page.locator('#set-password');
+    await password.locator('[name=email]').fill('fixture-send@bidv.com.vn');
+    await password.locator('[name=otp]').fill('234567');
+    await password.locator('[name=password]').fill('Fixture-new-password');
+    await password.getByRole('button', { name: 'Lưu mật khẩu' }).click();
+    await sleepUntilMessage(page, 'Đã lưu mật khẩu.');
+    assert.equal(await page.locator('#login [name=email]').inputValue(), 'fixture-send@bidv.com.vn');
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('ot-workspace:session')), null);
+    await page.getByRole('button', { name: 'Thư mời / Quên mật khẩu' }).click();
+    await password.getByRole('button', { name: 'Gửi mã đặt lại mật khẩu' }).click();
+    await sleepUntilMessage(page, 'Supabase sẽ gửi mã đặt lại mật khẩu');
+    assert.equal(await password.locator('[name=mode]').inputValue(), 'recovery');
+    await password.locator('[name=otp]').fill('234567');
+    await password.locator('[name=password]').fill('Fixture-new-password');
+    await password.getByRole('button', { name: 'Lưu mật khẩu' }).click();
+    await sleepUntilMessage(page, 'Đã lưu mật khẩu.');
+    assert.ok(calls.some(call => call.endpoint.endsWith('/verify') && call.fields.type === 'recovery'));
     assert.deepEqual(errors, []);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
     console.log('PASS Supabase mocked: registration, OTP, reload and expiry, user management, project membership, three selectable roles, live OT confirmation, monthly draft, unit history, signing XLSX, inline calendar and locked period, Excel OT, filter, warning and export.');
