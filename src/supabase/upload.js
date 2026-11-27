@@ -27,6 +27,7 @@ export function renderUpload(state, profile) {
     <h2>${admin ? 'Nhập OT từ Excel' : 'Nhập giờ OT trực tiếp'}</h2>
     ${admin ? excel + '<div id="upload-preview" aria-live="polite"></div>'
       : `<form id="manual-scope">${periodFields(state, state.manualScope ?? state)}</form>
+        <p id="manual-period-notice" class="manual-period-notice" role="status"></p>
         <div id="manual-sheet"></div>`}
   </section>`;
 }
@@ -185,14 +186,18 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
   const picker = root.querySelector('#manual-scope');
   if (picker) {
     const sheet = root.querySelector('#manual-sheet');
+    const periodNotice = root.querySelector('#manual-period-notice');
     const drafts = state.manualDrafts ??= new Map();
     function buildSheet(selection) {
       const { project, year, month } = selection;
       if (!project) {
+        periodNotice.textContent = '';
         sheet.innerHTML = '<p class="account-muted">Chọn dự án để hiện bảng ngày trong tháng.</p>';
         return;
       }
       const period = findPeriod(project, year, month);
+      periodNotice.textContent = period?.is_open ? '' :
+        `Kỳ OT tháng ${month}/${year} hiện đang khóa. Vui lòng liên hệ quản trị dự án để mở kỳ và cập nhật OT.`;
       const saved = findCalendar(project, year, month);
       const types = saved ?? defaultDays(year, month);
       const limits = findLimits(project, year, month);
@@ -215,7 +220,7 @@ export function bindUpload(root, state, profile, { action, findPeriod, findCalen
         })}</div>
         ${monthLegend()}
         <p class="account-muted">${editable ? 'Nhập số giờ, ví dụ 1,5 hoặc 1:30. Ô trống tính 0 giờ.'
-          : saved ? 'Kỳ đang khóa. Bạn có thể nhập nháp trong phiên này và lưu khi quản trị viên mở kỳ.'
+          : saved ? 'Bạn có thể nhập nháp trong phiên này và lưu khi kỳ mở.'
             : 'Kỳ chưa có lịch đã lưu. Bạn có thể nhập nháp trong phiên này và lưu sau khi quản trị viên lưu lịch và mở kỳ.'}</p>
         ${current?.source === 'summary' ? '<p class="account-muted">Kỳ này đã có bản tổng hợp. Nếu lưu bảng ngày mới, bản tổng hợp sẽ được thay thế.</p>' : ''}
         ${renderMonthGrid(year, month, types, {

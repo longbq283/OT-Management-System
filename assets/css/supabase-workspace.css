@@ -41,6 +41,14 @@ body { margin: 0; background: #f1f5f3; color: #18312b; }
 .pane-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .period-status { font-weight: 700; color: #785525; background: #f9efd8; border-radius: 1rem; padding: .2rem .7rem; }
 .period-status[data-open="true"] { color: #175c41; background: #e1f2e8; }
+.manual-period-notice:not(:empty) {
+  margin: .25rem 0 .9rem;
+  padding: .65rem .85rem;
+  border: 1px solid #e6ce9c;
+  border-radius: .55rem;
+  background: #f9efd8;
+  color: #614116;
+}
 .month-legend { display: flex; flex-wrap: wrap; gap: .6rem 1rem; list-style: none; margin: .3rem 0 .7rem; padding: 0; }
 .month-legend span { border-radius: .2rem; padding: .1rem .3rem; font-weight: 700; }
 .month-scroll { max-width: 100%; overflow-x: auto; border: 1px solid #c5d7d1; border-radius: .45rem; margin: .65rem 0; }

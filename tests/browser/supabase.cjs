@@ -368,6 +368,9 @@ async function run() {
 
     await fillPeriod(page, '#manual-scope', 'pr-a');
     await sleepUntilMessage(page, 'Kỳ chưa có lịch đã lưu');
+    const periodNotice = page.locator('#manual-period-notice');
+    assert.equal(await periodNotice.innerText(),
+      'Kỳ OT tháng 11/2026 hiện đang khóa. Vui lòng liên hệ quản trị dự án để mở kỳ và cập nhật OT.');
     assert.equal(await page.locator('#manual-ot [name=duration]').count(), 30);
     const dayOne = page.getByLabel('Giờ OT ngày 1', { exact: true });
     const dayTwo = page.getByLabel('Giờ OT ngày 2', { exact: true });
@@ -418,6 +421,11 @@ async function run() {
 
     await page.locator('#refresh-ot').click();
     await sleepUntilMessage(page, 'Đã tải dữ liệu mới nhất.');
+    assert.equal(await periodNotice.innerText(), '');
+    await page.locator('#manual-scope [name=month]').selectOption('10');
+    assert.match(await periodNotice.innerText(), /Kỳ OT tháng 10\/2026 hiện đang khóa/);
+    await page.locator('#manual-scope [name=month]').selectOption('11');
+    assert.equal(await periodNotice.innerText(), '');
     assert.equal(await dayOne.inputValue(), '1,5');
     assert.equal(await unit.inputValue(), 'Ban cũ giả lập');
     assert.equal(await page.locator('#manual-ot tr').nth(1).locator('td').nth(1).innerText(), 'L');
